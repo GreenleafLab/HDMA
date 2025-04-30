@@ -1,0 +1,88 @@
+output_dir: "$PROJ_ROOT/output/01-preprocessing/01/SpleenThymus"
+
+## Uncomment these lines to do a trial run with only two small test chunks per sublibrary
+# chunk_size: 2_000_000
+# test_chunks: 2
+chunk_size: 20_000_000
+
+genome:
+  bowtie2: $PROJ_ROOT/data/reference/bowtie2/hg38
+  star: $PROJ_ROOT/data/reference/star/
+  gene_annotation: $PROJ_ROOT/data/reference/gtf/gencode.v41.annotation.BPfiltered.gtf
+
+# Regular expressions for 1st round barcodes that should be mapped to each sample
+# Must cover all 1st round barcodes 
+# (use a dummy Undetermined sample if some 1st round barcodes are unused)
+samples:
+  T314_b17_Spleen_PCW21:  "A[0-9][0-9]"
+  T270_b17_Spleen_PCW18:  "B[0-9][0-9]"
+  T88_b17_Spleen_PCW18: "C[0-9][0-9]"
+  T165_b17_Spleen_PCW19:  "D[0-9][0-9]"
+  T23_b17_Thymus_PCW17:  "E[0-9][0-9]"
+  T90_b17_Thymus_PCW18:  "F[0-9][0-9]"
+  T406_b17_Thymus_PCW19:  "G[0-9][0-9]"
+  T233_b17_Thymus_PCW21:  "H[0-9][0-9]"
+
+sequencing:
+  230315:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230315_A00509_0687_BH2YMVDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL116: CGCAAATA
+    RNA_I2:
+      CL116: ACGGTAAT
+  230331b:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230331_A00509_0699_BH52HWDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL128: GCTCTTGA
+      CL129: ACGTGGGC
+      CL130: ACCGCCCA
+    RNA_I2:
+      CL115: TCCAAGGG
+      CL117: CTCGGACT
+      CL118: CAACAAGT
+      CL119: TGTATTAC
+      CL120: TAGACGCC
+      CL121: AGCAGCGC
+      CL122: AATGGCAC
+      CL123: CATACCTA
+  230406a:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230406_A00509_0702_BH3NJ7DSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    RNA_I2:
+      CL124: TAGGTGTT
+      CL125: GTTCGGAG
+      CL126: TGCCGTTG
+      CL127: CTACATTG
+      CL128: GGGTAGCC
+      CL129: CGGACTTT
+      CL130: CCGCGGAA
+  230419:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230419_A00509_0710_AH5HM2DSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL115: GGTCTACG
+      CL117: TCCTGGAT
+      CL118: CAGGAACA
+      CL119: CTGCGCGT
+      CL120: TCGCCAGA
+      CL121: TGTAGATT
+      CL122: GGTCAGTA
+      CL123: CCCTATCG
+      CL124: TTCTAAGT
+      CL125: AGATCTCT
+      CL126: CCTTCACC
+      CL127: CATTCGAT
+  230428:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230428_A00509_0718_AH5KFCDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL116: CGCAAATA
+    RNA_I2:
+      CL116: ACGGTAAT

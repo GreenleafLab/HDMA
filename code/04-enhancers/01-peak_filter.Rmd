@@ -1,0 +1,137 @@
+---
+title: "Filter global peaks"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+# Filter global peak set
+
+## Read all global peaks
+
+```{r}
+library(tidyverse)
+library(here)
+library(GenomicRanges)
+
+out <- here("output/04-enhancers/01")
+
+all_peaks <- readRDS(paste0(here("output/01-preprocessing/03"), "/peaks_gr.rds") )
+length(all_peaks)
+all_peaks %>% head
+```
+
+Add peak name in the format chromosome_start_end
+
+```{r}
+all_peaks$peak_name <- paste0(seqnames(all_peaks), "_", ranges(all_peaks) %>% start, "_",ranges(all_peaks) %>% end)
+
+all_peaks %>% head
+```
+
+Convert GRanges into a 1-based data frame
+
+```{r}
+peaks_df <- data.frame(all_peaks)
+peaks_df %>% head
+```
+
+Filter out columns we dont need
+
+```{r}
+rownames(peaks_df) <- peaks_df$peak_name 
+peaks_df <- peaks_df[!colnames(peaks_df) %in% c("width", "strand","idx", "N")]
+peaks_df %>% head
+```
+
+Test if we can easily convert the dataframe back to a GRanges object
+
+```{r}
+GRanges(peaks_df) %>% head
+```
+
+Save data frame with and without the ArchR default annotation columns
+
+```{r}
+saveRDS(peaks_df, paste0(out, "/peaks_all_df_annots.rds")) # 1-based
+saveRDS(peaks_df[c("seqnames", "start", "end")], paste0(out, "/peaks_all_df.rds")) # 1-based
+
+# also export as 0-based bed file
+rownames(peaks_df) <- NULL
+rtracklayer::export.bed(peaks_df, here::here("output/04-enhancers/01/hdma_global_acCREs.bed")) # 0-based
+```
+
+## Filter for non-exonic peaks only
+
+```{r}
+all_peaks$peakType %>% table
+
+peaks_noexon <- all_peaks[all_peaks$peakType != "Exonic"]
+peaks_noexon$peakType %>% table
+
+length(peaks_noexon)
+peaks_noexon %>% head
+```
+
+Add peak name in the format chromosome_start_end
+
+```{r}
+peaks_noexon$peak_name <- paste0(seqnames(peaks_noexon), "_", ranges(peaks_noexon) %>% start, "_",ranges(peaks_noexon) %>% end)
+
+peaks_noexon %>% head
+```
+
+Explore some other columns in the table
+
+```{r}
+peaks_noexon$idx %>% quantile
+```
+
+```{r}
+peaks_noexon$N %>% quantile
+```
+
+```{r}
+peaks_noexon$score %>% quantile
+```
+
+```{r}
+peaks_noexon$replicateScoreQuantile %>% quantile
+```
+
+Convert GRanges into a data frame
+
+```{r}
+peaks_df <- data.frame(peaks_noexon)
+peaks_df %>% head
+```
+
+Filter out columns we dont need
+
+```{r}
+rownames(peaks_df) <- peaks_df$peak_name 
+peaks_df <- peaks_df[!colnames(peaks_df) %in% c("width", "strand","idx", "N")]
+peaks_df %>% head
+```
+
+Test if we can easily convert the dataframe back to a GRanges object
+
+```{r}
+GRanges(peaks_df) %>% head
+```
+
+Save data frame with and without the ArchR default annotation columns
+
+```{r}
+saveRDS(peaks_df, paste0(out, "/peaks_noexon_df_annots.rds")) # 1-based
+saveRDS(peaks_df[c("seqnames", "start", "end")], paste0(out, "/peaks_noexon_df.rds")) # 1-based
+```

@@ -1,0 +1,569 @@
+---
+title: "Plot genomic tracks at select loci"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+kundaje_dir    <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+doc_id         <- "02"
+out            <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+figout         <- here("figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
+chrombpnet_dir <- here("output/03-chrombpnet")
+
+```
+
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+In this document we visualize tracks for chromatin accessibility and ChromBPNet
+products. Plotting of genomic tracks is done with [BPCells](https://bnprks.github.io/BPCells/index.html) together with some custom helper functions
+located in `code/utils/track_helpers*.R`.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(ggrepel)
+library(ggseqlogo)
+library(BPCells)
+library(patchwork)
+library(ggrastr)
+library(BSgenome)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "track_helpers_BL.R"))
+source(file.path(script_path, "track_helpers_SJ.R"))
+source(file.path(script_path, "chrombpnet_utils.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+
+# Load data
+
+Cluster metadata
+
+```{r load_cluster_meta}
+
+cluster_meta <- read_csv(here("output/05-misc/03/TableS2_cluster_meta_qc.csv")) %>% 
+  mutate(Cluster_chrombpnet = Cluster_ChromBPNet)
+organ_map <- cluster_meta %>% distinct(organ, organ_code)
+cmap_cluster <- cluster_meta %>% dplyr::select(Cluster_chrombpnet, organ_color) %>% tibble::deframe()
+
+```
+
+
+Set params:
+
+```{r set_finemo_param}
+
+finemo_param <- "counts_v0.23_a0.8_all"
+
+```
+
+
+# Load BPCells object
+
+```{r load_bpcells}
+
+global_bp_obj <- readRDS(here("output/05-misc/01/global_bp_obj.rds"))
+
+head(global_bp_obj$cell_metadata)
+
+```
+
+
+
+# Model performance in heart
+
+```{r heart_region}
+
+region <- "chr6:43168502-43176649" # "chr6:43169979-43183223"
+region_zoom <- "chr6:43171139-43171286"
+cluster <- "Heart_c0"
+
+```
+
+Once we've fixed the regions, we can load tracks once and subset them to avoid loading over and over.
+
+```{r import_tracks, eval = FALSE}
+
+# predicted signal
+bw_pred <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/predictions/bias_corrected/{cluster}_avg_chrombpnet_nobias.bw"))
+
+# nuc occupancy signal
+nuc_bw <- rtracklayer::import.bedGraph(glue("{chrombpnet_dir}/02-compendium/nucleoatac/{cluster}/{cluster}.occ.bedgraph.gz"))
+
+# contribution scores
+bw_contrib <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/contribs/bias_Heart_c0_thresh0.4/{cluster}/average_shaps.counts.bw"))
+
+# hits
+hits <- rtracklayer::import.bed(
+  glue("{chrombpnet_dir}/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{cluster}/{finemo_param}/{cluster}__hits_unified.{finemo_param}.reconciled.bed.gz"),
+  extraCols = c("pattern_class" = "character"))
+
+bw_pred_filt <- bw_pred[bw_pred %over% str_to_gr(region)]
+nuc_bw_filt  <- nuc_bw[nuc_bw %over% str_to_gr(region)]
+contrib_filt <- bw_contrib[bw_contrib %over% str_to_gr(region)]
+hits_filt    <- hits[hits %over% str_to_gr(region)]
+
+save(bw_pred_filt, nuc_bw_filt, contrib_filt, hits_filt, file = glue("{out}/heart_bw_inputs.Rda"))
+
+```
+
+
+
+```{r trackplot_heart, fig.width = 11, fig.height = 5}
+
+load(glue("{out}/heart_bw_inputs.Rda"))
+
+# get the color palette
+cmap_clusters <- cluster_meta %>%
+  filter(Cluster_chrombpnet %in% cluster) %>%
+  dplyr::select(Cluster_chrombpnet, organ_color) %>% tibble::deframe()
+
+# subset the global object
+sub_meta <- global_bp_obj$cell_metadata %>%
+  dplyr::filter(Cluster_chrombpnet %in% cluster)
+
+# coverage track
+track_cov <- trackplot_coverage2(
+  region           = region,
+  fragments        = global_bp_obj$frags %>% select_cells(sub_meta$cb),
+  groups           = sub_meta$Cluster_chrombpnet,
+  cell_read_counts = sub_meta$nFrags,
+  colors           = c("Heart_c0" = "black"),
+  bins             = 500) +
+  ylab(NULL)
+
+track_cov <- BPCells:::set_trackplot_label(track_cov, "Obs (RPKM)")
+
+# gene annotation
+track_genes <- trackplot_gene(global_bp_obj$transcripts, region) +
+  ggplot2::guides(color = "none")
+
+# scale bar for the top
+scale_plot <- trackplot_scalebar(region)
+
+# plot the predicted accessibility
+track_preds_corrected <- trackplot_bw(
+  bw          = bw_pred_filt,
+  region      = region,
+  facet_label = "Pred (bias-corrected)",
+  track_label = NULL,
+  color       = c("Heart" = "#BE1E2D"),
+  tile_width = 25)
+
+# continuous nuc signal
+track_nuc <- trackplot_bw(
+  bw          = nuc_bw_filt,
+  region      = region,
+  facet_label = "Nucleosome signal",
+  tile_width = 1,
+  track_label = NULL,
+  color       = c("Heart" = "navy"))
+
+# zoom in on pred. accessibility
+track_preds_corrected_zoom <- trackplot_bw(
+  bw          = bw_pred_filt,
+  region      = region_zoom,
+  track_label = NULL,
+  facet_label = "Pred (bias-corrected) [zoom]",
+  color       = c("Heart" = "#BE1E2D"),
+  tile_width  = 1,
+  plot_as     = "bar")
+
+# zoomed-in contribs
+track_contribs <- trackplot_contribs(contrib_filt,
+                                     region = region_zoom, 
+                                     track_label = NULL,
+                                     facet_label = "Contributions",
+                                     genome = BSgenome.Hsapiens.UCSC.hg38,
+                                     rel_height = 1) + xlab(NULL)
+
+track_hits <- trackplot_genome_annotation(loci = hits_filt,
+                                          region = region_zoom,
+                                          color_by = "score",
+                                          show_strand = TRUE,
+                                          colors = c("white", "red"), 
+                                          label_size = 3,
+                                          label_by = "name",
+                                          track_label = "Instances")
+
+plot_list <- map(list(track_cov, track_preds_corrected, track_nuc, track_genes),
+                 ~ .x + highlight_region(region_zoom, alpha = 0.4, color = "yellow"))
+
+plot_list2 <- list(track_preds_corrected_zoom, track_contribs, track_hits)
+
+trackplot_combine(c(list(scale_plot), plot_list, plot_list2),
+                  title = paste0(cluster, ": ", str_to_pretty(region))) &
+  ggplot2::theme(legend.direction = "vertical")
+
+```
+
+
+
+
+# Example of reducing motifs in muscle
+
+```{r muscle_region}
+
+region <- "chr11:17713291-17722392" # "chr6:43169979-43183223"
+region_zoom1 <- "chr11:17713844-17713983"
+region_zoom2 <- "chr11:17721432-17721577"
+cluster <- "Muscle_c0"
+
+```
+
+```{r import_tracks2, eval = FALSE}
+
+# predicted signal
+bw_pred <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/predictions/bias_corrected/{cluster}_avg_chrombpnet_nobias.bw"))
+
+# nuc occupancy signal
+nuc_bw <- rtracklayer::import.bedGraph(glue("{chrombpnet_dir}/02-compendium/nucleoatac/{cluster}/{cluster}.occ.bedgraph.gz"))
+
+# contribution scores
+bw_contrib <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/contribs/bias_Heart_c0_thresh0.4/{cluster}/average_shaps.counts.bw"))
+
+# hits
+hits <- rtracklayer::import.bed(
+  glue("{chrombpnet_dir}/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{cluster}/{finemo_param}/{cluster}__hits_unified.{finemo_param}.reconciled.bed.gz"),
+  extraCols = c("pattern_class" = "character"))
+
+bw_pred_filt <- bw_pred[bw_pred %over% str_to_gr(region)]
+nuc_bw_filt  <- nuc_bw[nuc_bw %over% str_to_gr(region)]
+contrib_filt <- bw_contrib[bw_contrib %over% str_to_gr(region)]
+hits_filt    <- hits[hits %over% str_to_gr(region)]
+
+save(bw_pred_filt, nuc_bw_filt, contrib_filt, hits_filt, file = glue("{out}/muscle_bw_inputs.Rda"))
+
+```
+
+
+```{r trackplot_muscle, fig.width = 11, fig.height = 6}
+
+load(glue("{out}/muscle_bw_inputs.Rda"))
+
+# get the color palette
+cmap_clusters <- cluster_meta %>%
+  filter(Cluster_chrombpnet %in% cluster) %>%
+  dplyr::select(Cluster_chrombpnet, organ_color) %>% tibble::deframe()
+
+# subset the global object
+sub_meta <- global_bp_obj$cell_metadata %>%
+  dplyr::filter(Cluster_chrombpnet %in% cluster)
+
+# coverage track
+track_cov <- trackplot_coverage2(
+  region           = region,
+  fragments        = global_bp_obj$frags %>% select_cells(sub_meta$cb),
+  groups           = sub_meta$Cluster_chrombpnet,
+  cell_read_counts = sub_meta$nFrags,
+  colors           = c("Muscle_c0" = cmap_organ[["Muscle"]]),
+  bins             = 500) +
+  ylab(NULL)
+
+track_cov <- BPCells:::set_trackplot_label(track_cov, "Obs (RPKM)")
+
+# gene annotation
+track_genes <- trackplot_gene(global_bp_obj$transcripts, region) +
+  ggplot2::guides(color = "none")
+
+# scale bar for the top
+scale_plot <- trackplot_scalebar(region)
+
+track_preds_corrected <- trackplot_bw(
+  bw          = bw_pred_filt,
+  region      = region,
+  facet_label = "Pred (bias-corrected)",
+  track_label = NULL,
+  color       = c("Muscle" = cmap_organ[["Muscle"]]),
+  tile_width = 25)
+
+track_nuc <- trackplot_bw(
+  bw          = nuc_bw_filt,
+  region      = region,
+  facet_label = "Nucleosome signal",
+  tile_width = 1,
+  track_label = NULL,
+  color       = c("Muscle" = "navy"))
+
+track_preds_corrected_zoom1 <- trackplot_bw(
+  bw          = bw_pred_filt,
+  region      = region_zoom1,
+  track_label = NULL,
+  facet_label = "Pred (bias-corrected) [zoom]",
+  color       = c("Muscle" = cmap_organ[["Muscle"]]),
+  tile_width  = 1,
+  plot_as     = "bar")
+
+# zoomed-in contribs
+track_contribs1 <- trackplot_contribs(contrib_filt,
+                                      region = region_zoom1, 
+                                      track_label = NULL,
+                                      facet_label = "Contributions",
+                                      genome = BSgenome.Hsapiens.UCSC.hg38,
+                                      rel_height = 1) + xlab(NULL)
+
+track_hits1 <- trackplot_genome_annotation(loci = hits_filt,
+                                           region = region_zoom1,
+                                           color_by = "pattern_class",
+                                           show_strand = TRUE,
+                                           colors = c("darkred", "darkgreen"), 
+                                           label_size = 3,
+                                           label_by = "name",
+                                           track_label = "Instances")
+
+# track_preds_corrected_zoom2 <- trackplot_bw(
+#   bw          = bw_pred,
+#   region      = region_zoom2,
+#   track_label = NULL,
+#   facet_label = "Pred (bias-corrected) [zoom]",
+#   color       = c("Muscle" = cmap_organ[["Muscle"]]),
+#   tile_width  = 1,
+#   plot_as     = "bar")
+# 
+# # zoomed-in contribs
+# track_contribs2 <- trackplot_contribs(bw_contrib,
+#                                      region = region_zoom2, 
+#                                      track_label = NULL,
+#                                      facet_label = "Contributions",
+#                                      genome = BSgenome.Hsapiens.UCSC.hg38,
+#                                      rel_height = 1) + xlab(NULL)
+# 
+# track_hits2 <- trackplot_genome_annotation(loci = hits,
+#                             region = region_zoom2,
+#                             color_by = "pattern_class",
+#                             show_strand = TRUE,
+#                             colors = c("darkred", "darkgreen"), 
+#                             label_size = 3,
+#                             label_by = "name",
+#                             track_label = "Instances")
+
+plot_list <- map(list(track_cov, track_preds_corrected, track_nuc, track_genes),
+                 ~ .x + highlight_region(region_zoom1, alpha = 0.4, color = "yellow"))
+
+plot_list2 <- list(track_preds_corrected_zoom1, track_contribs1, track_hits1)
+
+# plot_list3 <- list(track_preds_corrected_zoom2, track_contribs2, track_hits2)
+
+trackplot_combine(c(list(scale_plot), plot_list, plot_list2),
+                  title = paste0(cluster, ": ", str_to_pretty(region))) &
+  ggplot2::theme(legend.direction = "vertical")
+
+```
+
+
+
+# Consistency of syntax in endothelial cells
+
+Here we want to load the tracks for several endothelial clusters.
+
+```{r endo_region}
+
+region <- "chr5:150128841-150131272"
+region_gr <- str_to_gr(region)
+
+region_zoom <- "chr5:150129885-150130189"
+
+endo_clusters <- c("Muscle_c5", "Spleen_c2", "Thymus_c7", "Brain_c13", "Liver_c10", "Stomach_c10")
+
+```
+
+
+```{r endo_cov}
+
+sub_meta <- global_bp_obj$cell_metadata %>%
+  dplyr::filter(Cluster_chrombpnet %in% endo_clusters)
+
+# coverage track
+track_cov <- trackplot_coverage2(
+  region           = region,
+  fragments        = global_bp_obj$frags %>% select_cells(sub_meta$cb),
+  groups           = sub_meta$Cluster_chrombpnet,
+  cell_read_counts = sub_meta$nFrags,
+  colors           = cmap_cluster[endo_clusters],
+  bins             = 500) +
+  ylab(NULL) +
+  highlight_region(region_zoom, color = "yellow")
+
+```
+
+```{r endo_broad_pred, eval = FALSE}
+
+tracks_pred <- list()
+tracks_contrib <- list()
+
+# loop over clusters and plot the predicted accessibility and contribution scores
+for (i in endo_clusters) {
+  
+  organ <- str_split(i, pattern = "\\_")[[1]][1]
+  
+  message(i)
+  
+  # predicted signal
+  bw_pred <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/predictions/bias_corrected/{i}_avg_chrombpnet_nobias.bw"))
+  
+  # subset the bigwig
+  bw_filt <- bw_pred[bw_pred %over% region_gr]
+  rm(bw_pred)
+  
+  # contrib scores
+  bw_contrib <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/contribs/bias_Heart_c0_thresh0.4/{i}/average_shaps.counts.bw"))
+  bw_contrib_filt <- bw_contrib[bw_contrib %over% region_gr]
+  rm(bw_contrib)
+  
+  tracks_pred[[i]] <- bw_filt
+  tracks_contrib[[i]] <- bw_contrib_filt
+  
+}
+
+save(tracks_pred, tracks_contrib, file = glue("{out}/tracks_endo.Rda"))
+
+```
+
+
+Plot tracks:
+
+```{r endo_make_tracks}
+
+load(glue("{out}/tracks_endo.Rda"))
+
+# plot all the predictions in the wide region
+track_preds_broad <- imap(tracks_pred, ~ trackplot_bw(
+  bw          = .x,
+  region      = region,
+  facet_label = .y,
+  track_label = "Pred (bias-corrected)",
+  color       = cmap_cluster[.y],
+  tile_width = 5) + highlight_region(region_zoom, alpha = 0.4, color = "yellow"))
+
+# plot all the predictions in the zoomed region
+track_preds_zoom <- imap(tracks_pred, ~ trackplot_bw(
+  bw          = .x,
+  region      = region_zoom,
+  facet_label = .y,
+  track_label = "Pred (bias-corrected)",
+  color       = cmap_cluster[.y],
+  tile_width = 1))
+
+# plot all the contributions in the zoomed region
+# this version prints the ymin-ymax scale
+track_contribs <- imap(tracks_contrib, ~ trackplot_contribs_BL(
+  .x,
+  region = region_zoom, 
+  facet_label = .y,
+  track_label = "Contributions",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  ymax = 0.25, ymin = -0.039,
+  rel_height = 1) + xlab(NULL))
+
+```
+
+
+```{r endo_other_tracks}
+
+# gene annotation
+track_genes <- trackplot_gene(global_bp_obj$transcripts, region) +
+  ggplot2::guides(color = "none") +
+  highlight_region(region_zoom, alpha = 0.4, color = "yellow")
+
+# hits
+hits <- rtracklayer::import.bed(
+  glue("{chrombpnet_dir}/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/Muscle_c5/{finemo_param}/Muscle_c5__hits_unified.{finemo_param}.reconciled.bed.gz"),
+  extraCols = c("pattern_class" = "character"))
+
+track_hits <- trackplot_genome_annotation(loci = hits,
+                                          region = region_zoom,
+                                          color_by = "score",
+                                          show_strand = TRUE,
+                                          colors = c("white", "red"), 
+                                          label_size = 3,
+                                          label_by = "name",
+                                          track_label = "Instances")
+
+# scale bar for the top
+scale_plot <- trackplot_scalebar(region)
+
+```
+
+
+```{r trackplot_endothelial, fig.width = 11, fig.height = 13}
+
+trackplot_combine2(c(list(scale_plot), list(track_cov), track_preds_broad, list(track_genes), track_preds_zoom, track_contribs, list(track_hits)),
+                  title = str_to_pretty(region)) &
+  ggplot2::theme(legend.direction = "vertical")
+
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

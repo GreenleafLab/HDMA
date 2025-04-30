@@ -1,0 +1,1925 @@
+---
+title: "Analyze results of the motif synergy experiments"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+kundaje_dir    <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+doc_id         <- "04c"
+out            <- here( "output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+figout         <- here( "figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
+chrombpnet_dir <- here( "output/03-chrombpnet")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      out.width = '100%', # some interactive figures won't stretch if this is not set
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 2000)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Here, we load the results of *in silico* marginalizations to assess motif
+cooperativity/synergy and syntax constraints.
+
+We will assign motif pairs as having synergy or not, and having hard or soft
+syntax (or both or neither).
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(ggrepel)
+library(cowplot)
+library(pheatmap)
+library(ggseqlogo)
+library(universalmotif)
+library(TFBSTools)
+
+# for interactive stuff
+library(plotly)
+library(reactable)
+library(shiny)
+
+script_path <- here( "code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "chrombpnet_utils.R"))
+
+ggplot2::theme_set(theme_BOR() + theme(strip.background = element_blank()))
+
+```
+
+
+
+
+# Load data
+
+## Motif data
+
+```{r load_data}
+
+# load hits
+hits_all <- readRDS(file.path(chrombpnet_dir, "03-syntax/01/hits.Rds")) %>% bind_rows()
+
+# load intermediate objects
+load(file.path(chrombpnet_dir, "03-syntax/01/intermediate_obj.Rda"))
+
+```
+
+
+Load merged modisco reports:
+
+```{r load_modisco_merged}
+
+cwm_means <- read_tsv(here("output/03-chrombpnet/02-compendium/modisco_compiled/cwm_sums_df.tsv"))
+
+modisco_merged <- read_tsv(here("output/03-chrombpnet/02-compendium/modisco_compiled_anno/modisco_merged_reports.tsv")) %>% 
+  # get short cluster ID
+  left_join(cluster_meta %>% dplyr::select(Cluster, Cluster_ChromBPNet),
+            by = c("component_celltype" = "Cluster_ChromBPNet")) %>% 
+  left_join(cwm_means, by = "component_pattern")
+
+head(modisco_merged)
+
+```
+
+
+
+## In silico marginalization results
+
+```{r}
+
+ism_dir <- file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/")
+fs::dir_exists(ism_dir)
+
+```
+
+List of composites to test:
+
+```{r load_comp}
+
+compo_to_test <- read_tsv("04b-composites_to_test.tsv")
+compo_to_test$motif_name_safe <- gsub("\\/", "\\.", compo_to_test$motif_name)
+compo_to_test$done <- ifelse(file.exists(paste0(ism_dir, compo_to_test$motif_name_safe, "/.done")),
+                             TRUE,
+                             FALSE)
+
+sum(compo_to_test$done)
+
+compo_to_test_done <- compo_to_test %>% filter(done) %>% filter(test_spacing == "Y") %>%
+  dplyr::rename(seqA = test_seqA, seqB = test_seqB)
+
+```
+
+
+Check for duplicates:
+
+```{r}
+
+# sort the two motif sequences alphabetically so we can find duplicates even
+# when the order is swapped
+pairs <- map_dfr(1:nrow(compo_to_test_done), function(i) {
+  
+  motifs <- compo_to_test_done[i, c("seqA", "seqB")] %>% unlist() %>% sort()
+  data.frame(motif_name = compo_to_test_done$motif_name[i],
+             A = motifs[[1]],
+             B = motifs[[2]])
+  
+})
+
+# should be empty if no duplicates.
+pairs %>% group_by(A, B) %>% mutate(n = n()) %>% filter(n > 1)
+
+```
+
+
+Outputs of the in silico marginalization experiments:
+
+```{r wilcoxon}
+
+result_outs <- map_dfr(compo_to_test_done$motif_name_safe,
+                       ~ data.table::fread(glue("{ism_dir}/{.x}/results.tsv"), data.table = FALSE)) %>% 
+  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
+  dplyr::select(-seqA_palindrome, -seqB_palindrome)
+
+```
+
+
+
+
+Z-scores on the marginal joint effects:
+
+```{r load_z, message = FALSE}
+
+z_scores <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
+                     function(motif_safe, motif) {
+                       
+                       df <- data.table::fread(glue("{ism_dir}/{motif_safe}/Z_scores.tsv"), data.table = FALSE) %>% 
+                         mutate(motif_name = motif)
+                       df
+                       
+                     })  %>% 
+  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name")
+
+```
+
+
+Summarized effects for solo motifs:
+
+```{r load_solo, message = FALSE}
+
+solo_df <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
+                    ~ data.table::fread(glue("{ism_dir}/{.x}/summarized_effects_solo.tsv"), data.table = FALSE) %>% 
+                      mutate(motif_name = .y))  %>% 
+  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
+  dplyr::rename(orientation = key)
+
+```
+
+
+Summarized effects for spaced motifs:
+
+```{r load_spacing, message = FALSE}
+
+spacing_df <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
+                       ~ data.table::fread(glue("{ism_dir}/{.x}/summarized_effects_per_spacing.tsv"),
+                                           data.table = FALSE) %>% 
+                         mutate(motif_name = .y)) %>% 
+  left_join(compo_to_test_done %>% dplyr::select(motif_name, category, seqA, seqB), by = "motif_name") %>% 
+  dplyr::rename(orientation = key) %>% 
+  rowwise() %>% 
+  mutate(dist_center_to_center = round(nchar(seqA)/2) + spacing + round(nchar(seqB)/2))
+
+```
+
+
+Save intermediates:
+
+```{r}
+
+save(spacing_df, solo_df, z_scores, result_outs, compo_to_test, file = glue("{out}/intermediate_obj.Rda"))
+
+```
+
+
+# Palettes
+
+```{r}
+
+blues <- RColorBrewer::brewer.pal(6, "Blues")
+purples <- RColorBrewer::brewer.pal(6, "Purples")
+
+palette_orientation_hetero <- c('A,B HT' = blues[3],
+                                'B,A HT' = blues[4],
+                                'HH'     = blues[5],
+                                'TT'     = blues[6])
+
+palette_orientation_homo <- c('HT' = purples[2],
+                              'HH' = purples[4],
+                              'TT' = purples[6])
+
+palette_coop <- c("homo - not cooperative"   = "gray70",
+                  "hetero - not cooperative" = "gray70",
+                  "homo - cooperative"       = "#7696f5",
+                  "hetero - cooperative"     = "#ab7ec2",
+                  "homo - specific"          = "royalblue3",
+                  "hetero - specific"        = "darkorchid4")
+
+shapemap_result <- c("no synergy"  = 1,
+                     "soft"        = 24,
+                     "hard & soft" = 23,
+                     "hard"        = 22)
+
+cmap_category["not cooperative"] <- "gray80"
+
+palette_motifs <- colorRampPalette(RColorBrewer::brewer.pal(9, "Blues")[3:9])(n=nrow(compo_to_test_done))
+
+```
+
+
+
+# Data wrangling
+
+We want to combine results into one dataframe:
+
+```{r pval}
+
+# join results
+all_results_best <- compo_to_test_done %>%
+  dplyr::select(motif_name, Cluster, n_hits_per_cluster, idx_uniq, annotation_broad, component_motifA, component_motifB, seqA, seqB) %>% 
+  left_join(result_outs, by = "motif_name") %>% 
+  left_join(z_scores %>% dplyr::select(-category),
+            by = c("motif_name", "best_orientation" = "orientation", "best_spacing" = "spacing")) %>% 
+  left_join(spacing_df %>%
+              dplyr::select(-category, -effect_mean, -effect_sd, -seqA, -seqB) %>% 
+              dplyr::rename(best_counts_after_mean = counts_after_mean,
+                            best_counts_after_sd = counts_after_sd),
+            by = c("motif_name", "best_orientation" = "orientation", "best_spacing" = "spacing")) %>% 
+  left_join(solo_df %>% 
+              dplyr::filter(orientation == "A + B") %>% 
+              dplyr::select(motif_name,
+                            sum_counts_after_mean = counts_after_mean,
+                            sum_counts_after_sd = counts_after_sd,
+                            sum_effect = effect_mean)) %>% 
+  # the maximum difference between joint vs independent effects across all arrangements
+  mutate(joint_vs_ind_max = joint_effect - sum_effect)
+
+# adjust p-value
+all_results_best$joint_vs_sum_p_value_adj <- p.adjust(all_results_best$joint_vs_sum_p_value, method = "BH")
+
+```
+
+We want to calculate the difference in joint/independent effects for each arrangement;
+
+```{r}
+
+all_results_spacing <- spacing_df %>% 
+  dplyr::rename(joint_effect = effect_mean) %>% 
+  left_join(solo_df %>% filter(orientation == "A + B") %>%
+              dplyr::select(-orientation, -counts_after_mean, -counts_after_sd, -effect_sd, sum_effect = effect_mean),
+            by = c("motif_name", "category")) %>% 
+  mutate(joint_vs_ind_per_arragement = joint_effect - sum_effect)
+
+```
+
+Let's annotate the best orientation for each motif:
+
+```{r}
+
+all_results_spacing$is_best_orientation <- FALSE
+
+get_best_orientation <- function(motif) {
+  
+  all_results_best %>% filter(motif_name == motif) %>% pull(best_orientation)
+  
+}
+
+motifs <- unique(all_results_spacing$motif_name)
+
+for (i in seq_along(motifs)) {
+  
+  best_ori <- get_best_orientation(motifs[i])
+  all_results_spacing[all_results_spacing$motif_name == motifs[i] & all_results_spacing$orientation == best_ori, ]$is_best_orientation <- TRUE
+  
+}
+
+```
+
+Let's compute the max difference in joint vs ind. effects at the best orientation, in the 20-150bp range:
+
+```{r}
+
+tmp <- all_results_spacing %>% 
+  filter(is_best_orientation) %>% 
+  filter(spacing %in% 20:150) %>%
+  group_by(motif_name) %>%
+  slice_max(n = 1, order_by = joint_effect) %>%
+  mutate(joint_vs_ind_med_distance = joint_effect - sum_effect) %>% 
+  dplyr::select(motif_name, joint_vs_ind_med_distance) %>% 
+  ungroup()
+
+
+all_results_best <- all_results_best %>% left_join(tmp, by = "motif_name")
+
+```
+
+
+
+# Assess coooperativity and syntax requirements
+
+## Distribution of predicted counts
+
+What's the distribution of counts?
+
+```{r distribution_of_mean_counts_best, fig.width = 18, fig.height = 8}
+
+# first, get the mean
+motif_order_mean <- spacing_df %>% 
+  group_by(motif_name) %>% 
+  summarize(mean_counts = mean(counts_after_mean)) %>% 
+  arrange(desc(mean_counts)) %>% 
+  pull(motif_name)
+
+spacing_df %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order_mean)) %>% 
+  mutate(upper = counts_after_mean + counts_after_sd,
+         lower = counts_after_mean - counts_after_sd) %>% 
+  ggplot(aes(x = motif_name, y = counts_after_mean)) +
+  geom_point(aes(fill = category), shape = 21, color = "white", size = 2, alpha = 0.5) +
+  # geom_errorbar(aes(color = category, ymin = lower, ymax = upper), width = 0.1) +
+  scale_fill_manual(values = cmap_category) +
+  # scale_color_manual(values = cmap_category) +
+  facet_grid(. ~ category, space = "free_x", scales = "free_x") +
+  theme(strip.background = element_blank(),
+        axis.text.x = element_text(size = 9)) +
+  rotate_x() +
+  ylab("Mean predicted log-counts for AB") +
+  ggtitle("Distribution of predicted counts for all spacings/orientations of each comp. motif") +
+  no_legend()
+
+```
+
+
+
+## Account for marginal DeepSHAPs
+
+We also manually verified that DeepSHAPs on the ISM confirm that the motifs we inserted
+are indeed the ones driving the predicted accessibility. We thus remove
+them from downstream analysis.
+
+```{r}
+
+dim(all_results_best)
+
+motifs_no_contrib_support <- as.numeric(c("33", "40", "56", "72", "97", "104", "105", "152",
+                                          "164", "187", "191", "217", "281", "310", "338",
+                                          "349", "357", "413"))
+
+```
+
+
+## Assign results
+
+```{r results}
+
+p_val_thresh     <- 0.001
+z_thresh         <- 4
+delta_thresh     <- 0.15
+
+# decide if significant
+all_results_best <- all_results_best %>%
+  # we exclude cases where the contributions at the optimal arrangement didn't
+  # reflect the motifs we inserted, since it tells us the models are not performing
+  # the experiment we intended/not responding to those sequences
+  filter(!(idx_uniq %in% motifs_no_contrib_support)) %>% 
+  mutate(result = case_when(
+    joint_vs_sum_p_value_adj < p_val_thresh & joint_vs_ind_max > delta_thresh & joint_vs_ind_med_distance > delta_thresh & max_Z > z_thresh ~ "hard & soft",
+    joint_vs_sum_p_value_adj < p_val_thresh & joint_vs_ind_max > delta_thresh & max_Z > z_thresh ~ "hard",
+    joint_vs_sum_p_value_adj < p_val_thresh & joint_vs_ind_med_distance > delta_thresh ~ "soft",
+    TRUE ~ "no synergy"))
+
+all_results_spacing <- all_results_spacing %>%
+  left_join(all_results_best %>% dplyr::select(motif_name, result), by = "motif_name") %>% 
+  # remove filtered-out motifs
+  filter(!is.na(result)) %>% 
+  mutate(orientation = ifelse(orientation == "HT", "A,B HT", orientation),
+         result = factor(result, levels = rev(names(shapemap_result))))
+
+z_scores <- z_scores %>% mutate(orientation = ifelse(orientation == "HT", "A,B HT", orientation))
+
+```
+
+
+
+## Account for palindromic sequences
+
+First, let's basically score the similarity of each motif to its reverse complement.
+Importantly, since we are operating with specific _sequences_ for each motif,
+we'll quantify similarity on that _sequence_ rather than the motif it originates from.
+We'll look at the distribution to understand what
+are palindromes, quasi-palindromes, and non-palindromes.
+
+```{r}
+
+seqs_tested <- unique(c(all_results_best$seqA, all_results_best$seqB))
+length(seqs_tested)
+
+# convert these to motifs -- basically the PWMs will be the one-hot encoded versions
+seqs_tested_ppm <- map(seqs_tested, ~ universalmotif::create_motif(.x, name = .x))
+names(seqs_tested_ppm) <- seqs_tested
+
+# reverse complement
+# revcomp returns just the RC'd motif, so we need create_motif to recreate a motif class
+# in-place modification to set the name as the reverse complemented sequence
+# which is just the consensus sequence from the reverse complemented PPM of the original motif
+seqs_tested_ppm_rc <- map(seqs_tested_ppm, ~ universalmotif::create_motif(input = revcomp(.x@motif)) %>% 
+                            set_attr("name", .@consensus))
+
+# iterate over the two lists and calculate the similarity of a sequence to its
+# reverse complement
+self_sim <- map2_dfr(seqs_tested_ppm, seqs_tested_ppm_rc, function(fw, rev) {
+  
+  data.frame("motif_fw" = fw@name,
+             "motif_rev" = rev@name,
+             "similarity" = universalmotif::compare_motifs(motifs = list(fw, rev), tryRC = FALSE, use.type = "PPM") %>% .[1, 2])
+  
+})
+
+```
+
+
+Note that even some motifs which have self-similarity == 1 are not _perfectly_
+palindromic, as they may differ by one nucleotide on one side, e.g. CTAATTA and its
+reverse complement TAATTAG.
+
+```{r, fig.width = 20, fig.height = 8}
+
+p_sim <- self_sim %>% 
+  arrange(similarity) %>% 
+  mutate(motifs = paste0(motif_fw, ", ", motif_rev)) %>% 
+  mutate(motifs = factor(motifs, levels = unique(.$motifs))) %>% 
+  ggplot(aes(x = motifs, y = similarity, label = motifs)) +
+  geom_hline(yintercept = 0.7, color = "black") +
+  geom_point(color = "red") +
+  # scale_color_manual(values = cmap_category) +
+  coord_flip()
+
+ggplotly(p_sim)
+
+```
+
+Get categories which are palindromic:
+
+```{r}
+
+anno_pal <- self_sim %>% 
+  filter(motif_fw == motif_rev) %>% 
+  dplyr::pull(motif_fw) %>% 
+  unique()
+
+anno_quasipal <- self_sim %>% 
+  filter(similarity >= 0.7) %>% 
+  dplyr::pull(motif_fw) %>% 
+  unique()
+
+anno_quasipal <- base::setdiff(anno_quasipal, anno_pal)
+
+# sanity check, should be 0
+base::intersect(anno_pal, anno_quasipal)
+
+```
+
+
+```{r results_table}
+
+all_results_best <- all_results_best %>% 
+  mutate(
+    seqA_palindrome = case_when(
+      seqA %in% anno_pal ~ "P",
+      seqA %in% anno_quasipal ~ "Q",
+      grepl("BHLH|BZIP|NFI", component_motifA)  ~ "Q",
+      TRUE ~ "-"),
+    seqB_palindrome = case_when(
+      seqB %in% anno_pal ~ "P",
+      seqB %in% anno_quasipal ~ "Q",
+      grepl("BHLH|BZIP|NFI", component_motifB)  ~ "Q",
+      TRUE ~ "-")) %>% 
+  # a heuristic way to sort motifs
+  mutate(palindromicity = case_when(
+    seqA_palindrome == "P" & seqB_palindrome == "P" ~ 5,
+    seqA_palindrome != "-" & seqB_palindrome != "-" ~ 4,
+    seqA_palindrome == "P" | seqB_palindrome == "P" ~ 3, 
+    seqA_palindrome != "-" & seqB_palindrome == "-" ~ 2.5,
+    seqB_palindrome != "-" & seqA_palindrome == "-" ~ 2,
+    seqA_palindrome == "-" & seqB_palindrome == "-" ~ 1
+  )) %>% 
+  mutate(result = factor(result, levels = c("hard", "hard & soft", "soft", "no synergy")))
+
+all_results_best %>% write_tsv(glue("{out}/composite_motif_ISM_results.tsv"))
+
+```
+
+
+
+## Tally results
+
+Tally up the results:
+
+```{r tally, fig.width = 2, fig.height = 4}
+
+dim(all_results_best)
+
+table(all_results_best$result)
+
+# proportions
+table(all_results_best$result)/sum(table(all_results_best$result))
+
+DT::datatable(all_results_best)
+
+all_results_best %>%
+  mutate(result = factor(result, levels = c("hard", "hard & soft", "soft", "no synergy"))) %>%
+  ggplot(aes(x = result)) + geom_bar(fill = "black") + rotate_x() +
+  scale_y_continuous(breaks = seq(5, 55, 5))
+
+```
+
+
+
+
+## Prep table
+
+```{r}
+
+all_results_best %>%
+  dplyr::select(motif_name, idx_uniq, category, result, Cluster_ChromBPNet = Cluster,
+                annotation_broad, component_motifA, component_motifB, seqA, seqB,
+                best_orientation,
+                best_distance_between_motifs = best_spacing,
+                best_dist_centers = dist_center_to_center, best_seq,
+                joint_effect_log_counts = joint_effect,
+                joint_vs_sum_p_value,
+                joint_vs_sum_p_value_adj,
+                Z_scored_joint_effect = Z,
+                independent_effect = sum_effect,
+                seqA_palindrome,
+                seqB_palindrome) %>% 
+  mutate(result = factor(result, levels = c("hard", "hard & soft", "soft", "no synergy"))) %>% 
+  arrange(result) %>% 
+  write_csv(glue("{out}/TABLE_ism_synergy_results.csv"))
+
+```
+
+
+# Overview of scores
+
+## Distance between motifs
+
+What's the distribution of spacing we see for specific interactions?
+
+```{r dist_spacing_specific_pairs, fig.width = 6, fig.height = 4}
+
+df1 <- all_results_best %>% 
+  filter(result %in% c("hard", "hard & soft")) %>%
+  group_by(result, best_spacing, category) %>% 
+  count() %>% 
+  dplyr::rename(distance = best_spacing) %>% 
+  mutate(type = "dist_spacing")
+
+df2 <- all_results_best %>% 
+  filter(result %in% c("hard", "hard & soft")) %>%
+  group_by(result, dist_centers, category) %>% 
+  count() %>% 
+  mutate(n = -n) %>% 
+  dplyr::rename(distance = dist_centers) %>% 
+  mutate(type = "dist_centers")
+
+bind_rows(df1, df2) %>% 
+  ggplot(aes(x = distance, y = n)) +
+  geom_hline(yintercept = 0) +
+  geom_col(aes(fill = type)) +
+  scale_fill_manual(values = c("dist_spacing" = "black", "dist_centers" = "darkorchid4")) +
+  xlab("distance (bp)") + ylab("Number of motif pairs") +
+  scale_x_continuous(breaks = seq(0, 19, by = 1), limits = c(-1, 18)) +
+  scale_y_continuous(breaks = seq(-5, 10)) +
+  no_legend() +
+  theme(axis.text.x = element_text(size = 9))
+
+```
+
+
+## Prevalence and importance of syntax motifs
+
+First, we can ask among all 508 motifs, where the do the motifs w/ syntax effects rank.
+However, motifs which are cell type specific may have their signal diluted here by motifs which are ubiquitous
+and frequent.
+
+We will focus on positive patterns for this analysis.
+
+```{r hits_vs_rank, fig.width = 9, fig.height = 4}
+
+cmap_synergy <- c("hard" = "red3",
+                  "hard & soft" = "red3",
+                  "soft" = "salmon",
+                  "no synergy" = "gray40",
+                  "not tested" = "gray90")
+
+motifs_w_results <- all_results_best %>%
+  mutate(result = as.character(result)) %>% 
+  dplyr::select(motif_name, result) %>% 
+  # filter(result %in% c("hard", "hard & soft", "soft")) %>% 
+  right_join(motifs_compiled_unique) %>% 
+  mutate(result = ifelse(is.na(result), "not tested", result)) %>% 
+  arrange(total_hits) %>% 
+  filter(pattern_class == "pos_patterns") %>% 
+  dplyr::select(motif_name, result, total_hits, category) %>% 
+  mutate(rank = dense_rank(-total_hits))
+
+table(motifs_w_results$result)
+print(dim(motifs_w_results))
+
+hits_motifs_w_hard_syntax <- motifs_w_results %>% filter(result %in% c("hard", "hard & soft")) %>%
+  pull(total_hits)
+hits_motifs_w_soft_syntax <- motifs_w_results %>% filter(result %in% c("soft")) %>%
+  pull(total_hits)
+hits_motifs_w_no_syntax <- motifs_w_results %>% filter(result %in% c("no synergy", "not tested")) %>% pull(total_hits)
+
+length(hits_motifs_w_hard_syntax)
+length(hits_motifs_w_soft_syntax)
+length(hits_motifs_w_no_syntax)
+
+(ks_out <- ks.test(hits_motifs_w_hard_syntax, hits_motifs_w_no_syntax))
+(ks_out2 <- ks.test(hits_motifs_w_soft_syntax, hits_motifs_w_no_syntax))
+
+motifs_w_results %>% 
+  mutate(result = factor(result, levels = names(cmap_synergy))) %>% 
+  ggplot(aes(x = rank, y = log10(total_hits))) +
+  geom_hline(yintercept = 0) +
+  geom_point(aes(color = result), alpha = 0.7, size = 3) +
+  geom_segment(data = motifs_w_results %>% filter(!(result %in% c("not tested", "no synergy"))),
+               mapping = aes(x = rank, y = 0,
+                             xend = rank, yend = -1/3,
+                             color = result),
+               size = 1) +
+  # geom_line(aes(group = result)) +
+  scale_color_manual(values = cmap_synergy) +
+  theme(axis.ticks.x = element_blank(),
+        axis.text.x = element_blank()) +
+  annotate("text",
+           label = glue("KS test p-value for motifs \nw/ hard syntax vs others: \np={round(ks_out$p.value, 3)}"),
+           x = 250, y = 6, size = 4) +
+  xlab("motif rank")
+
+```
+
+This means at the global level, motifs w/ hard/soft syntax don't seem more prevalent
+based on number of hits.
+
+
+Which cell types have at least one motif w/ hard/soft syntax?
+
+```{r celltypes_w_syntax, fig.width = 16, fig.height = 6}
+
+# this includes all 189 clusters
+length(unique(modisco_merged$Cluster))
+
+# motifs with hard & soft syntax are being counted as hard here:
+orig_motifs_joined_w_syntax <- motifs_compiled_unique %>% 
+  filter(pattern_class == "pos_patterns") %>% 
+  dplyr::select(motif_name, pattern) %>% 
+  left_join(all_results_best %>% dplyr::select(motif_name, result), by = "motif_name") %>% 
+  mutate(result = case_when(
+    is.na(result) ~ "not tested",
+    result == "hard & soft" ~ "hard",
+    TRUE ~ result)) %>% 
+  left_join(modisco_merged %>% dplyr::select(merged_pattern, Cluster_ChromBPNet = component_celltype, cwm_mean, cwm_sum), by = c("pattern" = "merged_pattern")) %>% 
+  left_join(cluster_meta %>% dplyr::select(Cluster_ChromBPNet, organ))
+
+counts_motifs_per_type_per_celltype <- orig_motifs_joined_w_syntax %>% 
+  filter(result %in% c("hard", "soft")) %>% 
+  group_by(organ, Cluster_ChromBPNet, result) %>% 
+  count()
+
+head(counts_motifs_per_type_per_celltype)
+table(counts_motifs_per_type_per_celltype$result)
+(props <- table(counts_motifs_per_type_per_celltype$result)/189)
+length(unique(counts_motifs_per_type_per_celltype$Cluster_ChromBPNet))/189
+
+counts_motifs_per_type_per_celltype %>% 
+  mutate(n = ifelse(result == "soft", -n, n)) %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = n)) +
+  geom_bar(aes(fill = organ), stat = "identity") +
+  geom_hline(yintercept = 0) +
+  scale_fill_manual(values = cmap_organ) +
+  xlab("cluster") +
+  rotate_x() +
+  theme(axis.text.x = element_text(size = 11)) +
+  scale_y_continuous(breaks = seq(-4, 10, by = 2)) +
+  ylab("<--soft---     number of motifs w/ significant effect     ----hard--->") +
+  ggtitle(glue("prop. of cell types w/ at least one hard syntax motif: {round(props['hard'], 2)}\nprop. of cell types w/ at least one soft syntax motif: {round(props['soft'], 2)}"))
+
+```
+
+What about prevalence (in terms of number of instances) within cell types?
+
+```{r prevalence_per_cell_type, fig.width = 20, fig.height = 6}
+
+# these are the motifs from all original clusters, that did not get clustered
+# into patterns that were exluded due to QC
+orig_motifs_joined_w_syntax %>% dim
+
+orig_motifs_joined_w_syntax2 <- orig_motifs_joined_w_syntax %>% 
+  left_join(hits_all_anno %>% dplyr::select(motif_name, Cluster_ChromBPNet = Cluster, n_hits = n), by = c("motif_name", "Cluster_ChromBPNet")) %>% 
+  mutate(result = factor(result, levels = rev(names(cmap_synergy)))) %>% 
+  filter(!is.na(n_hits))
+
+# orig_motifs_joined_w_syntax2 %>% 
+#   ggplot(aes(x = Cluster_ChromBPNet, y = log10(n_hits))) +
+#   geom_point(aes(color = result), alpha = 0.7) +
+#   scale_color_manual(values = cmap_synergy) +
+#   rotate_x() +
+#   xlab("cluster") + ylab("log10(number of hits)") +
+#   ggtitle("number of hits per motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+Representing these as normalized ranks:
+
+```{r prevalence_norm_per_cell_type, fig.width = 20, fig.height = 6}
+
+motifs_ranked <- orig_motifs_joined_w_syntax2 %>% 
+  group_by(Cluster_ChromBPNet) %>% 
+  mutate(rank = dense_rank(n_hits)) %>% 
+  mutate(norm_rank = rank/max(rank))
+
+any(is.na(motifs_ranked$norm_rank))
+
+motifs_ranked %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = norm_rank)) +
+  geom_point(aes(color = result), alpha = 0.7) +
+  scale_color_manual(values = cmap_synergy) +
+  rotate_x() +
+  xlab("cluster") + ylab("normalized rank within the cluster (rank / max_rank)") +
+  ggtitle("normalized rank by number of hits per motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+
+Now we can do a similar analysis ranking motifs by CWM mean:
+
+```{r rank_by_mean_contribs_per_cell_type, fig.width = 20, fig.height = 6}
+
+# these are the motifs from all original clusters, that did not get clustered
+# into patterns that were exluded due to QC
+orig_motifs_joined_w_syntax %>% dim
+
+# orig_motifs_joined_w_syntax2 %>% 
+#   ggplot(aes(x = Cluster_ChromBPNet, y = cwm_mean)) +
+#   geom_point(aes(color = result), alpha = 0.7) +
+#   scale_color_manual(values = cmap_synergy) +
+#   rotate_x() +
+#   xlab("cluster") + ylab("mean CWM importance") +
+#   ggtitle("mean importance per trimmed motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+Representing these as normalized ranks:
+
+```{r norm_rank_by_mean_contribs_per_cell_type, fig.width = 20, fig.height = 6}
+
+motifs_ranked2 <- orig_motifs_joined_w_syntax2 %>% 
+  group_by(Cluster_ChromBPNet) %>% 
+  mutate(rank = dense_rank(cwm_mean)) %>% 
+  mutate(norm_rank = rank/max(rank))
+
+motifs_ranked2 %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = norm_rank)) +
+  geom_point(aes(color = result), alpha = 0.7) +
+  scale_color_manual(values = cmap_synergy) +
+  rotate_x() +
+  xlab("cluster") + ylab("normalized rank within the cluster (rank / max_rank)") +
+  ggtitle("normalized rank by mean importance per motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+
+We can also rank by the CWM sum:
+
+```{r rank_by_summed_contribs_per_cell_type, fig.width = 20, fig.height = 6}
+
+# these are the motifs from all original clusters, that did not get clustered
+# into patterns that were exluded due to QC
+orig_motifs_joined_w_syntax %>% dim
+
+orig_motifs_joined_w_syntax2 %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = cwm_sum)) +
+  geom_point(aes(color = result), alpha = 0.7) +
+  scale_color_manual(values = cmap_synergy) +
+  rotate_x() +
+  xlab("cluster") + ylab("total CWM importance") +
+  ggtitle("summed importance per trimmed motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+Representing these as normalized ranks:
+
+```{r norm_rank_by_summed_contribs_per_cell_type, fig.width = 20, fig.height = 6}
+
+motifs_ranked3 <- orig_motifs_joined_w_syntax2 %>% 
+  group_by(Cluster_ChromBPNet) %>% 
+  mutate(rank = dense_rank(cwm_sum)) %>% 
+  mutate(norm_rank = rank/max(rank))
+
+motifs_ranked3 %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = norm_rank)) +
+  geom_point(aes(color = result), alpha = 0.7) +
+  scale_color_manual(values = cmap_synergy) +
+  rotate_x() +
+  xlab("cluster") + ylab("normalized rank within the cluster (rank / max_rank)") +
+  ggtitle("normalized rank by total importance per motif per cluster \n(1 point = 1 motif in 1 cluster)")
+
+```
+
+
+
+
+
+In cell types that have these types of motifs, what's the mean normalized rank
+for number of hits or summed importance for motifs with a given type of synergy, among all motifs
+learned in that cell type?
+
+```{r wilcox_rank_hits}
+
+motifs_ranked_mean <- motifs_ranked %>% 
+  group_by(Cluster_ChromBPNet, result) %>% 
+  summarize(mean_norm_rank = mean(norm_rank)) %>% 
+  mutate(result = factor(result, levels = names(cmap_synergy)))
+
+length(unique(motifs_ranked$Cluster_ChromBPNet))
+table(motifs_ranked_mean$result)
+
+# get the ranks per group
+ranks1 <- map(c("not tested", "hard", "soft", "no synergy"),
+              ~ motifs_ranked_mean %>% filter(result == .x) %>% pull(mean_norm_rank)) %>% set_names(c("not tested", "hard", "soft", "no synergy"))
+
+# Wilcoxon rank-sum tests
+tibble::tribble(
+  ~ "comparison",       ~ "p_value",
+  "hard vs not tested", wilcox.test(ranks1$hard, ranks1$not_tested,   paired = FALSE)$p.value,
+  "hard vs soft",       wilcox.test(ranks1$hard, ranks1$soft,         paired = FALSE)$p.value,
+  "hard vs no synergy", wilcox.test(ranks1$hard, ranks1$`no synergy`, paired = FALSE)$p.value,
+  "soft vs not tested", wilcox.test(ranks1$soft, ranks1$not_tested,   paired = FALSE)$p.value,
+  "soft vs no synergy", wilcox.test(ranks1$soft, ranks1$`no synergy`, paired = FALSE)$p.value)
+
+```
+
+
+And for the mean importance-based rank:
+
+```{r wilcox_rank_imp}
+
+motifs_ranked_mean2 <- motifs_ranked2 %>% 
+  group_by(Cluster_ChromBPNet, result) %>% 
+  summarize(mean_norm_rank = mean(norm_rank)) %>% 
+  mutate(result = factor(result, levels = names(cmap_synergy)))
+
+length(unique(motifs_ranked2$Cluster_ChromBPNet))
+table(motifs_ranked_mean2$result)
+
+# get the ranks per group
+ranks2 <- map(c("not tested", "hard", "soft", "no synergy"),
+              ~ motifs_ranked_mean2 %>% filter(result == .x) %>% pull(mean_norm_rank)) %>% set_names(c("not tested", "hard", "soft", "no synergy"))
+
+# Wilcoxon rank-sum tests
+tibble::tribble(
+  ~ "comparison",       ~ "p_value",
+  "hard vs not tested", wilcox.test(ranks2$hard, ranks2$not_tested,   paired = FALSE)$p.value,
+  "hard vs soft",       wilcox.test(ranks2$hard, ranks2$soft,         paired = FALSE)$p.value,
+  "hard vs no synergy", wilcox.test(ranks2$hard, ranks2$`no synergy`, paired = FALSE)$p.value,
+  "soft vs not tested", wilcox.test(ranks2$soft, ranks2$not_tested,   paired = FALSE)$p.value,
+  "soft vs no synergy", wilcox.test(ranks2$soft, ranks2$`no synergy`, paired = FALSE)$p.value)
+
+```
+
+
+And for the summed importance-based rank:
+
+```{r wilcox_rank_imp_sum}
+
+motifs_ranked_mean3 <- motifs_ranked3 %>% 
+  group_by(Cluster_ChromBPNet, result) %>% 
+  summarize(mean_norm_rank = mean(norm_rank)) %>% 
+  mutate(result = factor(result, levels = names(cmap_synergy)))
+
+length(unique(motifs_ranked2$Cluster_ChromBPNet))
+table(motifs_ranked_mean3$result)
+
+# get the ranks per group
+ranks3 <- map(c("not tested", "hard", "soft", "no synergy"),
+              ~ motifs_ranked_mean3 %>% filter(result == .x) %>% pull(mean_norm_rank)) %>% set_names(c("not tested", "hard", "soft", "no synergy"))
+
+# Wilcoxon rank-sum test
+tibble::tribble(
+  ~ "comparison",             ~ "p_value",
+  "hard vs not tested",       wilcox.test(ranks3$hard,         ranks3$not_tested,   paired = FALSE)$p.value,
+  "hard vs soft",             wilcox.test(ranks3$hard,         ranks3$soft,         paired = FALSE)$p.value,
+  "hard vs no synergy",       wilcox.test(ranks3$hard,         ranks3$`no synergy`, paired = FALSE)$p.value,
+  "soft vs not tested",       wilcox.test(ranks3$soft,         ranks3$not_tested,   paired = FALSE)$p.value,
+  "soft vs no synergy",       wilcox.test(ranks3$soft,         ranks3$`no synergy`, paired = FALSE)$p.value,
+  "no synergy vs not tested", wilcox.test(ranks3$`no synergy`, ranks3$`not tested`, paired = FALSE)$p.value)
+
+```
+
+
+```{r distribution_mean_normed_rank, fig.width = 15, fig.height = 5}
+
+p1 <- motifs_ranked_mean %>% 
+  ggplot(aes(x = result, y = mean_norm_rank)) +
+  geom_boxplot(aes(fill = result), outliers = FALSE, fill = "white") +
+  # scale_fill_manual(values = cmap_synergy) +
+  geom_jitter(width = 0.2, shape = 21, color = "gray60", alpha = 0.8) +
+  no_legend() +
+  xlab("type of motif") + ylab("mean normalized rank") +
+  ggtitle("normalized ranks for each type of motif, \nacross cell types", subtitle = "based on number of hits (1 point = 1 cell type)" ) +
+  ylim(c(0, 1))
+
+p2 <- motifs_ranked_mean2 %>% 
+  ggplot(aes(x = result, y = mean_norm_rank)) +
+  geom_boxplot(aes(fill = result), outliers = FALSE, fill = "white") +
+  # scale_fill_manual(values = cmap_synergy) +
+  geom_jitter(width = 0.2, shape = 21, color = "gray60", alpha = 0.8) +
+  no_legend() +
+  xlab("type of motif") + ylab("mean normalized rank") +
+  ggtitle("normalized ranks for each type of motif, \nacross cell types", subtitle = "based on mean trimmed CWM importance (1 point = 1 cell type)") +
+  ylim(c(0, 1))
+
+p3 <- motifs_ranked_mean3 %>% 
+  ggplot(aes(x = result, y = mean_norm_rank)) +
+  geom_boxplot(aes(fill = result), outliers = FALSE, fill = "white") +
+  # scale_fill_manual(values = cmap_synergy) +
+  geom_jitter(width = 0.2, shape = 21, color = "gray60", alpha = 0.8) +
+  no_legend() +
+  xlab("type of motif") + ylab("mean normalized rank") +
+  ggtitle("normalized ranks for each type of motif, \nacross cell types", subtitle = "based on total trimmed CWM importance (1 point = 1 cell type)") +
+  ylim(c(0, 1))
+
+plot_grid(p1, #+ ggtitle(NULL, subtitle = NULL),
+          p2, #+ ggtitle(NULL, subtitle = NULL),
+          p3, #+ ggtitle(NULL, subtitle = NULL),
+          nrow = 1)
+
+```
+
+
+## LFC, Z-score, and counts
+
+```{r scatter_joint_vs_marginal, fig.width = 10, fig.height = 10}
+
+p0 <- all_results_best %>% 
+  ggplot(aes(x = sum_effect, y = joint_effect, label = motif_name)) +
+  geom_abline(slope = 1, linetype = "dashed", color = "black") +
+  geom_point(aes(size = -log10(joint_vs_sum_p_value_adj), fill = category, shape = result, color = category), alpha = 0.7, stroke = 1) +
+  scale_fill_manual(values = cmap_category) +
+  scale_color_manual(values = cmap_category) +
+  scale_shape_manual(values = shapemap_result) +
+  # scale_fill_manual(values = palette_coop) +
+  ylab("Joint effect") +
+  xlab("Independent effect") +
+  xlim(c(0, 2)) + ylim(c(0, 2)) +
+  square() +
+  theme(legend.position = "bottom")
+
+shapemap_result2 <- shapemap_result
+shapemap_result2["no synergy"] <- 21
+
+p0_2 <- all_results_best %>%
+  mutate(max_Z = ifelse(result == "no synergy", NA, max_Z)) %>%
+  ggplot(aes(x = sum_effect, y = joint_effect, label = motif_name)) +
+  geom_abline(slope = 1, linetype = "dashed", color = "black") +
+  geom_point(aes(fill = max_Z, size = -log10(joint_vs_sum_p_value_adj), shape = result), alpha = 0.7, color = "black") +
+  scale_fill_gradientn(colors = ylrd, na.value = "gray70") +
+  scale_color_gradientn(colors = ylrd, na.value = "gray70") +
+  scale_shape_manual(values = shapemap_result2) +
+  ylab("AB marginal effect, ln(counts)") +
+  xlab("A+B marignal effect, ln(counts)") +
+  xlim(c(0, 2)) + ylim(c(0, 2)) +
+  square() +
+  theme(legend.position = "bottom")
+
+plot_grid(p0, p0_2, nrow = 1, align = "h", axis = "tb")
+
+```
+
+
+<!-- Other comparisons: -->
+
+<!-- ```{r scatter_plots, fig.width = 20, fig.height = 10} -->
+
+<!-- p1 <- all_results_best %>%  -->
+<!--   ggplot(aes(x = best_counts_after_mean, y = joint_effect, label = motif_name)) + -->
+<!--   geom_point(aes(size = -log10(joint_vs_sum_p_value_adj), fill = category, shape = result, color = category), alpha = 0.7, stroke = 1) + -->
+<!--   scale_fill_manual(values = cmap_category) + -->
+<!--   scale_color_manual(values = cmap_category) + -->
+<!--   scale_shape_manual(values = shapemap_result) + -->
+<!--   ylab("Marginal effect AB (log counts)") + -->
+<!--   xlab("Mean predicted log counts after motif insertion") + -->
+<!--   square() + -->
+<!--   theme(legend.position = "bottom") -->
+
+<!-- p2 <- all_results_best %>%  -->
+<!--   ggplot(aes(x = joint_effect, y = Z, label = motif_name)) + -->
+<!--   geom_point(aes(size = -log10(joint_vs_sum_p_value_adj), fill = category, shape = result, color = category), alpha = 0.7, stroke = 1) + -->
+<!--   scale_fill_manual(values = cmap_category) + -->
+<!--   scale_color_manual(values = cmap_category) + -->
+<!--   scale_shape_manual(values = shapemap_result) + -->
+<!--   xlab("Marginal effect AB (log counts)") + -->
+<!--   ylab("Maximum Z-score") + -->
+<!--   square() + -->
+<!--   coord_flip() + -->
+<!--   scale_y_continuous(breaks = seq(1, 20, by = 1)) + -->
+<!--   theme(legend.position = "bottom") -->
+
+<!-- plot_grid(p1, p2) -->
+
+<!-- ``` -->
+
+
+```{r, fig.width = 10, fig.height = 7}
+
+ggplotly(p0_2)
+
+```
+
+
+
+
+<!-- ```{r, fig.width = 10, fig.height = 7} -->
+
+<!-- ggplotly(p2) -->
+
+<!-- ``` -->
+
+
+
+
+## Behaviour across 200bp
+
+This implies that our categories have different overall behavirous across 200 bp.
+
+```{r curves_best_orientation, fig.width = 4, fig.height = 7}
+
+all_results_spacing %>% 
+  filter(is_best_orientation) %>% 
+  ggplot(aes(x = dist_center_to_center, y = joint_vs_ind_per_arragement, group = motif_name, label = motif_name)) +
+  geom_hline(yintercept = 0, color = "black", alpha = 0.3, lwd = 1) +
+  geom_line(alpha = 0.3, aes(color = motif_name)) +
+  annotate('point', x = 10.5, y = 1.4,
+           shape = 25, size = 2, color = 'red', fill = 'red', alpha = 0.5) +
+  annotate('text', x = 35, y = 1.4, color = 'red', label = "10.5 bp") +
+  facet_wrap(~ result, ncol = 1) +
+  ylab("AB - (A+B) effects in log-counts") + xlab("center-to-center distance (bp)") +
+  scale_color_manual(values = palette_motifs) +
+  no_legend() +
+  ylim(c(-0.5, 1.5))
+
+```
+
+
+
+
+
+## Heatmap representation
+
+```{r heatmap_preliminaries}
+
+# motif order - by result, then palindromes, then Z
+motif_order <- all_results_best %>%
+  mutate(result = factor(result, levels = rev(names(shapemap_result)))) %>% 
+  # sort by increasing z-score
+  arrange(result, max_Z) %>% 
+  pull(motif_name) %>% 
+  unique()
+
+motif_order2 <- all_results_best %>%
+  mutate(result = factor(result, levels = rev(names(shapemap_result)))) %>% 
+  # sort by increasing z-score
+  arrange(category, palindromicity, max_Z) %>% 
+  pull(motif_name) %>% 
+  unique()
+
+results_w_spacing <- all_results_spacing %>% 
+  mutate(result = factor(result, levels = rev(names(shapemap_result)))) %>% 
+  arrange(result, joint_effect) %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order),
+         category = factor(category, levels = c("homocomposite", "heterocomposite")))
+
+results_w_zscore <- all_results_spacing %>% 
+  left_join(z_scores, by = c("orientation", "spacing", "motif_name", "category")) %>% 
+  mutate(result = factor(result, levels = rev(names(shapemap_result)))) %>% 
+  arrange(result, Z) %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order),
+         category = factor(category, levels = c("homocomposite", "heterocomposite")),
+         # cap the Z-score at 5 for better visualization of smaller Z-scores
+         # TODO: edit legend to indicate >=N
+         Z = ifelse(Z > 5, 5, Z))
+
+```
+
+
+### Specific pairs
+
+Helper function to plot the heatmap for one motif pair, similarly to Taipale lab
+2015 paper:
+
+```{r}
+
+#' @param motif character, motif namee
+#' Z-scored effect
+plot_heatmap_per_pair <- function(motif, n_bp = 20) {
+  
+  orientations <- c("HH", "TT", "A,B HT", "B,A HT")
+  
+  p1 <- results_w_spacing %>% 
+    filter(motif_name == motif) %>% 
+    filter(spacing < n_bp) %>% 
+    mutate(orientation = factor(orientation, levels = rev(orientations))) %>% 
+    ggplot(aes(x = spacing, y = orientation)) +
+    geom_tile(aes(fill = joint_effect), color = "white") +
+    scale_fill_gradientn(colors = viridis::magma(100)) +
+    theme(strip.background = element_blank(),
+          panel.border = element_blank(),
+          # axis.text.y = element_text(size = 9),
+          axis.ticks.y = element_blank(),
+          strip.text.y = element_blank()) +
+    xlab("spacing (bp)") + ylab("orientations") + labs(fill = "effect_mean") +
+    ggtitle(motif)
+  
+  p2 <- results_w_zscore %>% 
+    filter(motif_name == motif) %>% 
+    filter(spacing < n_bp) %>% 
+    mutate(orientation = factor(orientation, levels = rev(orientations))) %>% 
+    ggplot(aes(x = spacing, y = orientation)) +
+    geom_tile(aes(fill = Z),color = "black") +
+    scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0) +
+    theme(strip.background = element_blank(),
+          panel.border = element_blank(),
+          # axis.text.y = element_(),
+          axis.ticks.y = element_blank()) +
+    xlab("spacing (bp)") + ylab("orientations") + labs(fill = "Z-scored effect")
+  
+  plot_grid(p1, p2, ncol = 1, align = "v", axis = "rl", rel_heights = c(1.2, 1))
+  
+}
+
+
+```
+
+
+```{r pair_heatmap, fig.width = 8, fig.height = 6}
+
+plot_heatmap_per_pair("467|p53_p53#1")
+plot_heatmap_per_pair("434|SOX_SOX#1")
+
+```
+
+
+
+### Heatmaps across spacings
+
+<!-- 200bp: -->
+
+<!-- ```{r heatmap_200bp, fig.width = 16, fig.height = 15} -->
+
+<!-- results_w_spacing %>%  -->
+<!--   mutate(motif_name = factor(motif_name, levels = motif_order2)) %>%  -->
+<!--   filter(spacing <= 150) %>%  -->
+<!--   ggplot(aes(x = spacing, y = motif_name)) + -->
+<!--   geom_tile(aes(fill = joint_effect)) + -->
+<!--   facet_grid(result ~ orientation, scales = "free_y", space = "free_y") +  -->
+<!--   scale_fill_gradientn(colors = viridis::magma(100)) + -->
+<!--   theme(strip.background = element_blank(), -->
+<!--         panel.border = element_blank(), -->
+<!--         axis.ticks.y = element_blank(), -->
+<!--         axis.text.y = element_text(size = 7), -->
+<!--         legend.position = "bottom") + -->
+<!--   ggtitle("Marginal joint effects") + -->
+<!--   xlab("spacing (bp)") + ylab(NULL) -->
+
+<!-- results_w_zscore %>%  -->
+<!--   mutate(motif_name = factor(motif_name, levels = motif_order2)) %>%  -->
+<!--   filter(spacing <= 150) %>% -->
+<!--   ggplot(aes(x = spacing, y = motif_name)) + -->
+<!--   geom_tile(aes(fill = Z)) + -->
+<!--   facet_grid(result ~ orientation, scales = "free_y", space = "free_y") +  -->
+<!--   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0) + -->
+<!--   theme(strip.background = element_blank(), -->
+<!--         panel.border = element_blank(), -->
+<!--         axis.ticks.y = element_blank(), -->
+<!--         axis.text.y = element_text(size = 7), -->
+<!--         legend.position = "bottom") + -->
+<!--   ggtitle("Z-scored effects") + -->
+<!--   xlab("spacing (bp)") + ylab(NULL) -->
+
+<!-- ``` -->
+
+
+Let's try a version where for each motif, we only select the best orientation
+and show the results at that one:
+
+```{r heatmap_200bp_best_orientation, fig.width = 10, fig.height = 12}
+
+all_results_spacing %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order2)) %>% 
+  ggplot(aes(x = spacing, y = motif_name)) +
+  geom_tile(aes(fill = joint_vs_ind_per_arragement)) +
+  facet_grid(result ~ ., scales = "free_y", space = "free_y") + 
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0) +
+  theme(strip.background = element_blank(),
+        strip.text.y = element_text(angle = 0),
+        panel.border = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_text(size = 5)) +
+  ggtitle("Joint - independent effect") +
+  xlab("spacing (bp)") + ylab(NULL)
+
+```
+
+
+
+
+### Composite motifs w/ syntax effects
+
+We can reformat the data a bit to get the plots for all "specific" cooperative motifs,
+including both homocomposites and heterocomposites:
+
+```{r heatmap_specific, fig.width = 16, fig.height = 9}
+
+p1 <- results_w_spacing %>%
+  mutate(motif_name = factor(motif_name, levels = motif_order2)) %>% 
+  filter(result %in% c("hard", "hard & soft")) %>%
+  filter(spacing < 20) %>%
+  ggplot(aes(x = spacing, y = motif_name)) +
+  geom_tile(aes(fill = joint_effect)) +
+  facet_grid(category ~ orientation, scales = "free_y", space = "free_y") +
+  scale_fill_gradientn(colors = viridis::magma(100)) +
+  theme(strip.background = element_blank(),
+        panel.border = element_blank(),
+        axis.text.y = element_text(size = 9),
+        axis.ticks.y = element_blank(),
+        strip.text.y = element_blank(),
+        legend.position = "bottom") +
+  ggtitle("Marginal joint effect") +
+  xlab("spacing (bp)") + ylab("motif pair")
+
+p2 <- results_w_zscore %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order2)) %>% 
+  filter(result %in% c("hard", "hard & soft")) %>%
+  filter(spacing < 20) %>% 
+  ggplot(aes(x = spacing, y = motif_name)) +
+  geom_tile(aes(fill = Z)) +
+  facet_grid(category ~ orientation, scales = "free_y", space = "free_y") + 
+  scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0) +
+  theme(strip.background = element_blank(),
+        panel.border = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        legend.position = "bottom") +
+  ggtitle("Z-scored effect") +
+  xlab("spacing (bp)") + ylab(NULL)
+
+# plot_grid(p1, p2, nrow = 1, rel_widths = c(1.4, 1))
+
+```
+
+
+
+Plot some features of these motifs
+
+```{r hit_proportions, fig.width = 10, fig.height = 12}
+
+coop_subset <- motifs_compiled_unique %>%
+  right_join(all_results_best %>% dplyr::select(motif_name, result, Z, joint_effect), by = "motif_name") %>% 
+  filter(result %in% c("hard", "hard & soft"))
+
+dim(coop_subset)
+
+motifs_filt <- coop_subset %>% mutate(annotation_broad = motif_name)
+hits_annotated <- hits_all_anno %>% mutate(annotation_broad = motif_name) %>% 
+  filter(motif_name %in% coop_subset$motif_name)
+
+# group by broad annotation and calculate summary stats
+motifs_to_plot <- motifs_filt %>% 
+  group_by(annotation_broad) %>% 
+  mutate(total_hits_broad = sum(total_hits),
+         n_variants = n()) %>%
+  # for visualization of the logo, use the motif w/ the most hits
+  slice_max(n = 1, order_by = total_hits) %>% 
+  arrange(desc(total_hits_broad))
+
+# plot breakdown of total hits based on cell type compartment
+p4 <- hits_annotated %>%
+  dplyr::select(annotation_broad, compartment, category, n) %>%
+  group_by(annotation_broad, compartment, category) %>%
+  summarize(n_hits = sum(n)) %>%
+  mutate(annotation_broad = factor(annotation_broad, levels = motif_order2)) %>%
+  ggplot(aes(y = annotation_broad, x = n_hits)) +
+  geom_col(aes(fill = compartment), position = "fill") +
+  scale_fill_manual(values = cmap_compartment2) +
+  facet_grid(category ~ ., space = "free_y", scales = "free_y") + 
+  ylab(NULL) + xlab(NULL) + ggtitle("% hits \nby compartment") +
+  theme(panel.grid = element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_blank(),
+        # axis.text.y = element_blank(),
+        # axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size = 10),
+        legend.position = "bottom") +
+  ggplot2::guides(fill=guide_legend(ncol=2))
+
+# plot breakdown of total hits based on organ
+p5 <- hits_annotated %>%
+  dplyr::select(annotation_broad, organ, n, category) %>%
+  group_by(annotation_broad, organ, category) %>%
+  summarize(n_hits = sum(n)) %>%
+  mutate(annotation_broad = factor(annotation_broad, levels = motif_order2)) %>%
+  ggplot(aes(y = annotation_broad, x = n_hits)) +
+  geom_col(aes(fill = organ), position = "fill") +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(category ~ ., space = "free_y", scales = "free_y") + 
+  ylab(NULL) + xlab(NULL) + ggtitle("% hits \nby compartment") +
+  theme(panel.grid = element_blank(),
+        panel.border = element_blank(),
+        strip.background = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.x = element_text(size = 10),
+        legend.position = "bottom") +
+  ggplot2::guides(fill=guide_legend(ncol=2))
+
+p6 <- motifs_compiled_unique %>%
+  filter(motif_name %in% motifs_filt$motif_name) %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order2)) %>%
+  ggplot(aes(y = motif_name, x = "1")) +
+  # color scale is on log10
+  geom_tile(aes(fill = log10(total_hits)), alpha = 1) +
+  # labels are non log-transformed
+  geom_text(aes(label = scales::comma(total_hits)), color = "white", size = 3) +
+  # don't include the very lightest colors; too hard to read
+  scale_fill_gradientn(colors = viridis::plasma(100)[0:95], limits = c(0, 8)) +
+  facet_grid(category ~ ., space = "free_y", scales = "free_y") + 
+  ylab(NULL) + xlab(NULL) + ggtitle("total # hits") +
+  rotate_x() +
+  hide_ticks() +
+  theme(panel.grid = element_blank(),
+        panel.border = element_blank(),
+        legend.position = "bottom")
+
+# plot_grid(p4 + theme(strip.text = element_blank()), p5, p6, nrow = 1, align = "h", axis = "tb", rel_widths = c(2, 1, 1))
+
+```
+
+
+
+Get logos:
+
+```{r}
+
+# get motifs in the new order
+cwm_list_subset <- cwm_list[motifs_to_plot$motif_name] %>% 
+  map(trim_cwm, flank = 2)
+
+# use the annotation_broad name instead of the motif name
+# base_representative$motif_name_short <- gsub("^[^|]*\\|([^#]*)#.*$", "\\1", base_representative$motif_name)
+names(cwm_list_subset) <- plyr::mapvalues(names(cwm_list_subset),
+                                          from = motifs_to_plot$motif_name,
+                                          to = as.character(motifs_to_plot$annotation_broad))
+
+hetero_specific <- coop_subset %>% filter(category == "heterocomposite") %>% pull(motif_name)
+homo_specific <- coop_subset %>% filter(category == "homocomposite") %>% pull(motif_name)
+
+p_logos_homo <- ggplot() +
+  geom_logo(cwm_list_subset[rev(motif_order2[motif_order2 %in% homo_specific])], method = "custom", font = "roboto_bold") +
+  theme_logo() +
+  facet_grid(seq_group ~ ., scales = "free_y", switch = "both") +
+  theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
+        # reduce margins between facets, so that the logos can take up
+        # a little bit more space
+        panel.spacing=unit(0, "lines")
+  ) +
+  hide_ticks() + ylab(NULL)
+
+p_logos_hetero <- ggplot() +
+  geom_logo(cwm_list_subset[rev(motif_order2[motif_order2 %in% hetero_specific])], method = "custom", font = "roboto_bold") +
+  theme_logo() +
+  facet_grid(seq_group ~ ., scales = "free_y", switch = "both") +
+  theme(strip.text.y.left = element_text(angle = 0, hjust = 1),
+        # reduce margins between facets, so that the logos can take up
+        # a little bit more space
+        panel.spacing=unit(0, "lines")
+  ) +
+  hide_ticks() + ylab(NULL)
+
+p_logos <- plot_grid(p_logos_homo, p_logos_hetero, ncol = 1, align = "v", axis = "rl", rel_heights = c(1, length(hetero_specific)/length(homo_specific)))
+
+```
+
+
+
+```{r summary_all, fig.width = 22, fig.height = 9}
+
+p_palindromic <- all_results_best %>%
+  filter(result %in% c("hard", "hard & soft")) %>% 
+  dplyr::select(motif_name, category, seqA_palindrome, seqB_palindrome) %>% 
+  mutate(category = factor(category, levels = c("homocomposite", "heterocomposite", "not cooperative"))) %>% 
+  gather(seq, palindrome, seqA_palindrome, seqB_palindrome) %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order2)) %>%
+  ggplot(aes(x = seq, y = motif_name)) +
+  geom_tile(aes(fill = palindrome), alpha = 0.8) +
+  geom_text(aes(label = palindrome), fontface = "bold", size = 4, color = "black") +
+  facet_grid(category ~ ., scales = "free_y", space = "free_y") + 
+  scale_fill_manual(values = c("P" = "#2bad0a", "Q" = "#8fe37b", "-" = "gray90")) + #, aesthetics = c("color", "fill")) +
+  ggtitle("palindromic") +
+  no_legend() +
+  ylab(NULL) +
+  xlab(NULL) +
+  theme(panel.grid = element_blank(),
+        panel.border = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        strip.background = element_blank())
+
+plot_grid(p_logos,
+          p_palindromic + theme(strip.text = element_blank()),
+          p6 + theme(strip.text = element_blank()),
+          p2 + theme(strip.text.y = element_blank()),
+          p4 + theme(strip.text = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank()),
+          p5, nrow = 1, rel_widths = c(1.5, 0.2, 0.2, 2, 0.5, 0.5), rel_heights = c(1.5, 1, 1, 1, 1, 1, 1), align = "h", axis = "tb")
+
+```
+
+
+
+
+## Curves for some examples
+
+```{r}
+
+plot_curves <- function(motif, facet = TRUE, limits = NULL, best_orientation = FALSE, palette = NULL) {
+  
+  solo_stats <- solo_df %>% filter(orientation == "A + B" & motif_name == motif)
+  
+  if (best_orientation) {
+    
+    keep_orientation <- result_outs %>% filter(motif_name == motif) %>% pull(best_orientation)
+    plot_df <- spacing_df %>% filter(motif_name == motif & orientation == keep_orientation)
+    
+  } else {
+    
+    plot_df <- spacing_df %>% filter(motif_name == motif)
+  }
+  
+  p1 <- plot_df %>% 
+    ggplot(aes(x = spacing)) +
+    geom_hline(yintercept = solo_stats$effect_mean, color = "gray60", size = 2) +
+    geom_line(aes(y = effect_mean, color = orientation), alpha = 0.7, size = 2) +
+    geom_ribbon(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd, fill = orientation), alpha = 0.2) +
+    annotate("text", label = "A + B", x = 190, y = solo_stats$effect_mean + 0.05, size = 6) +
+    ylab("Marginal joint effect") + xlab("distance between motifs (bp)") +
+    ggtitle(motif)
+  
+  # scale_color_manual(values = palette_orientation_hetero) +
+  # scale_fill_manual(values = palette_orientation_hetero) +
+  
+  if (!is.null(limits)) p1 <- p1 + ylim(limits)
+  if (facet) p1 <- p1 + facet_wrap(~ orientation, ncol = 1) + no_legend()
+  if (!is.null(palette)) p1 <- p1 + scale_color_manual(values = palette)
+  
+  p1
+  
+}
+
+```
+
+
+This also lets us appreciate that true palindromes have identical outcomes because
+we're literally doing the exact same experiment. 
+
+```{r curve_per_motif_facet, fig.width = 8, fig.height = 3}
+
+plot_curves("430|RUNX_TCF7L/LEF",   limits = c(0, 0.6), facet = FALSE, best_orientation = TRUE, palette = "red")
+plot_curves("74|BHLH_HD:PBX1/PDX1", limits = c(0, 0.6), facet = FALSE, best_orientation = TRUE, palette = "red")
+plot_curves("80|BHLH_MEF2#1",       limits = c(0, 0.6), facet = FALSE, best_orientation = TRUE, palette = "red")
+plot_curves("423|RFX_SOX",          limits = c(0, 0.6), facet = FALSE, best_orientation = TRUE, palette = "red")
+
+```
+
+
+## Composite motif 47 (Coordinator)
+
+```{r coord_profiles}
+
+pred_profiles_47 <- data.table::fread(
+  file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/47|BHLH:TWIST.ZBTB_HD/profile_preds_A,B HT.tsv"),
+  data.table = FALSE)
+
+pred_profiles_47 %>% 
+  ggplot(aes(x = position, y = mean)) +
+  geom_line(color = "red") +
+  geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd), fill = "red", alpha = 0.3) +
+  facet_grid(spacing ~ .) +
+  scale_y_continuous(breaks = c(0.1, 0.5)) +
+  scale_x_continuous(labels = c(-500, -250, 0, 250, 500)) +
+  theme(panel.spacing.y = unit(0.1, "lines"))
+
+```
+
+```{r coord_spacing, fig.width = 7, fig.height = 6}
+
+spacing_df %>% 
+  filter(motif_name == "47|BHLH:TWIST/ZBTB_HD") %>% 
+  filter(spacing <= 20) %>% 
+  ggplot(aes(x = spacing, y = effect_mean)) +
+  geom_bar(stat = "identity", color = "black", fill = "red") +
+  geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
+  facet_wrap(~ orientation, ncol = 2)
+
+```
+
+
+
+## Composite motif 74
+
+```{r 74_profiles}
+
+pred_profiles_74 <- data.table::fread(
+  file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/74|BHLH_HD:PBX1.PDX1/profile_preds_B,A HT.tsv"),
+  data.table = FALSE)
+
+pred_profiles_74 %>% 
+  ggplot(aes(x = position, y = mean)) +
+  geom_line(color = "red") +
+  geom_ribbon(aes(ymin = mean - sd, ymax = mean + sd), fill = "red", alpha = 0.3) +
+  facet_grid(spacing ~ .) +
+  scale_y_continuous(breaks = c(0.1, 0.5)) +
+  scale_x_continuous(labels = c(-500, -250, 0, 250, 500)) +
+  theme(panel.spacing.y = unit(0.1, "lines"))
+
+```
+
+```{r 74_spacing, fig.width = 7, fig.height = 6}
+
+spacing_df %>% 
+  filter(motif_name == "74|BHLH_HD:PBX1/PDX1") %>% 
+  filter(spacing <= 20) %>% 
+  ggplot(aes(x = spacing, y = effect_mean)) +
+  geom_bar(stat = "identity", color = "black", fill = "red") +
+  geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
+  facet_wrap(~ orientation, ncol = 2)
+
+```
+
+
+
+# Interactive effects per motif {.tabset}
+
+This section allows for exploring the outputs of the *in silico* experiments 
+interactively.
+
+### Heterocomposites
+
+```{r interactive_results1, fig.width = 22, fig.height = 7, warning=FALSE, echo = FALSE}
+
+hline <- function(y = 0, color = "red") {
+  list(
+    type = "line",
+    x0 = 0,
+    x1 = 1,
+    xref = "paper",
+    y0 = y,
+    y1 = y,
+    line = list(color = color)
+  )
+}
+
+# adapted from Frank Hu!
+spacing_df_het <- spacing_df %>%
+  arrange(orientation, spacing, motif_name) %>%
+  filter(category == "heterocomposite")
+
+z_scores_het <- z_scores %>%
+  arrange(orientation, spacing, motif_name) %>%
+  filter(category == "heterocomposite")
+
+# set colors as a column
+spacing_df_het$color <- unname(palette_orientation_hetero[spacing_df_het$orientation])
+z_scores_het$color <- unname(palette_orientation_hetero[z_scores_het$orientation])
+
+# create the list of buttons for filtering
+btns <- unique(spacing_df_het$motif_name) %>%
+  lapply(function(y) {
+    list(
+      method = "restyle",
+      args = list("transforms[0].value", y),
+      label = y
+    )
+  })
+
+# initialize the button
+m <- sort(unique(spacing_df_het$motif_name))[1]
+
+# bar plot for spacing LFCs
+bar_plots <- spacing_df_het %>%
+  group_by(orientation) %>%
+  group_map(~ plot_ly(.) %>%
+              add_trace(
+                type = 'bar',
+                x = ~ spacing,
+                y = ~ effect_mean,
+                color = ~ orientation,
+                mode = "markers",
+                colors = ~ color,
+                showlegend = TRUE,
+                transforms = list(
+                  list(
+                    type = 'filter',
+                    target = ~ spacing_df_het$motif_name,
+                    operation = 'in',
+                    value = m
+                  )
+                )
+              ) %>%
+              layout(
+                # shapes = list(hline(log2(1.5)), hline(log2(2))),
+                yaxis = list(title = 'Marginal joint effect'),
+                updatemenus = list(
+                  list(
+                    type = 'dropdown',
+                    buttons = btns,
+                    active = which(sapply(btns, `[[`, 'label') == m) - 1,
+                    direction = "down",
+                    showactive = TRUE
+                  )
+                )
+              ), .keep=TRUE)
+
+# scatter plot for z-scores
+scatter_plot <- z_scores_het %>%
+  plot_ly() %>%
+  add_trace(
+    type = 'scatter',
+    x = ~ orientation,
+    y = ~ Z,
+    color = ~ orientation,
+    mode = "markers",
+    colors = ~ color,
+    showlegend = TRUE,
+    transforms = list(
+      list(
+        type = 'filter',
+        target = ~ z_scores_het$motif_name,
+        operation = 'in',
+        value = m
+      )
+    )
+  ) %>%
+  layout(
+    shapes = list(hline(3)),
+    yaxis = list(title = 'Z-scores'),
+    updatemenus = list(
+      list(
+        type = 'dropdown',
+        buttons = btns,
+        active = which(sapply(btns, `[[`, 'label') == m) - 1,
+        direction = "down",
+        showactive = TRUE
+      )
+    )
+  )
+
+# combine bar plots
+bar_combined <- subplot(
+  bar_plots,
+  nrows = 1,
+  shareX = TRUE,
+  shareY = TRUE,
+  titleX = TRUE,
+  titleY = TRUE
+)
+
+# combine both bar and scatter plots
+final_plot <- subplot(
+  bar_combined, scatter_plot,
+  nrows = 2,
+  shareX = TRUE,
+  shareY = FALSE,
+  titleX = TRUE,
+  titleY = TRUE
+)
+
+# final plot w/ shared button
+final_plot
+
+```
+
+
+
+### Homocomposites
+
+```{r interactive_results2, fig.width = 22, fig.height = 7, warning=FALSE, echo = FALSE}
+
+hline <- function(y = 0, color = "red") {
+  list(
+    type = "line",
+    x0 = 0,
+    x1 = 1,
+    xref = "paper",
+    y0 = y,
+    y1 = y,
+    line = list(color = color)
+  )
+}
+
+# adapted from Frank Hu!
+spacing_df_homo <- spacing_df %>%
+  arrange(orientation, spacing, motif_name) %>%
+  filter(category == "homocomposite")
+
+z_scores_homo <- z_scores %>%
+  arrange(orientation, spacing, motif_name) %>%
+  filter(category == "homocomposite") %>% 
+  mutate(orientation = ifelse(orientation == "A,B HT", "HT", orientation))
+
+# set colors as a column
+spacing_df_homo$color <- unname(palette_orientation_homo[spacing_df_homo$orientation])
+z_scores_homo$color <- unname(palette_orientation_homo[z_scores_homo$orientation])
+
+# create the list of buttons for filtering
+btns <- unique(spacing_df_homo$motif_name) %>%
+  lapply(function(y) {
+    list(
+      method = "restyle",
+      args = list("transforms[0].value", y),
+      label = y
+    )
+  })
+
+# initialize the button
+m <- sort(unique(spacing_df_homo$motif_name))[1]
+
+# bar plot for spacing LFCs
+bar_plots <- spacing_df_homo %>%
+  group_by(orientation) %>%
+  group_map(~ plot_ly(.) %>%
+              add_trace(
+                type = 'bar',
+                x = ~ spacing,
+                y = ~ effect_mean,
+                color = ~ orientation,
+                mode = "markers",
+                colors = ~ color,
+                showlegend = TRUE,
+                transforms = list(
+                  list(
+                    type = 'filter',
+                    target = ~ spacing_df_homo$motif_name,
+                    operation = 'in',
+                    value = m
+                  )
+                )
+              ) %>%
+              layout(
+                # shapes = list(hline(log2(1.5)), hline(log2(2))),
+                yaxis = list(title = 'Marginal joint effect'),
+                updatemenus = list(
+                  list(
+                    type = 'dropdown',
+                    buttons = btns,
+                    active = which(sapply(btns, `[[`, 'label') == m) - 1,
+                    direction = "down",
+                    showactive = TRUE
+                  )
+                )
+              ), .keep=TRUE)
+
+# scatter plot for z-scores
+scatter_plot <- z_scores_homo %>%
+  plot_ly() %>%
+  add_trace(
+    type = 'scatter',
+    x = ~ orientation,
+    y = ~ Z,
+    color = ~ orientation,
+    mode = "markers",
+    colors = ~ color,
+    showlegend = TRUE,
+    transforms = list(
+      list(
+        type = 'filter',
+        target = ~ z_scores_homo$motif_name,
+        operation = 'in',
+        value = m
+      )
+    )
+  ) %>%
+  layout(
+    shapes = list(hline(3)),
+    yaxis = list(title = 'Z-scores'),
+    updatemenus = list(
+      list(
+        type = 'dropdown',
+        buttons = btns,
+        active = which(sapply(btns, `[[`, 'label') == m) - 1,
+        direction = "down",
+        showactive = TRUE
+      )
+    )
+  )
+
+# combine bar plots
+bar_combined <- subplot(
+  bar_plots,
+  nrows = 1,
+  shareX = TRUE,
+  shareY = TRUE,
+  titleX = TRUE,
+  titleY = TRUE
+)
+
+# combine both bar and scatter plots
+final_plot <- subplot(
+  bar_combined, scatter_plot,
+  nrows = 2,
+  shareX = TRUE,
+  shareY = FALSE,
+  titleX = TRUE,
+  titleY = TRUE
+)
+
+# final plot w/ shared button
+final_plot
+
+```
+
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

@@ -1,0 +1,433 @@
+---
+title: "summary stats on peak2gene analyses"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+params:
+  threads: NULL
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/05" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(ArchR)
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(cowplot)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ComplexHeatmap)
+library(circlize)
+library(ggpubr)
+
+# shared project scripts/functions
+script_path <- here::here("code/utils")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "GO_wrappers.R"))
+
+ggplot2::theme_set(theme_minimal())
+addArchRGenome("hg38")
+```
+
+# Get tissue metadata
+
+```{r}
+
+tissue_meta <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+
+```
+# Get all annotations
+
+```{r get_annot}
+# add organ colors
+col.data.frame <- data.frame(Color=cmap_organ) %>% dplyr::mutate(organ=names(cmap_organ))
+
+organ.code.list <- tissue_meta$organcode
+all.annots <- lapply(1:length(organ.code.list), function(i){
+  # read cluster id annotation
+  annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta_cluster.txt"), organ.code.list[i]), sep="\t") %>% as.data.frame
+  rownames(annot) <- annot$cb
+  annot$L0_clusterID <- paste0(organ.code.list[i],"_",annot$L1_clusterID)
+  annot$L3_clusterID <- paste0(organ.code.list[i],"_",annot$L3_clusterName)
+  return(annot)
+})
+all.annots <- dplyr::bind_rows(all.annots)
+rownames(all.annots) <- all.annots$L0_clusterID
+
+all.annots <- all.annots %>%
+  mutate(Cluster = paste0(organ_code, "_",L1_clusterID)) %>%
+  mutate(Cluster_labelled = paste0(organ_code, "_", L1_clusterID, "_", L3_clusterName)) %>%
+  left_join(col.data.frame) %>%
+  tibble::column_to_rownames(var = "Cluster")
+head(all.annots)
+```
+# Plot P2G summary stats per organ
+```{r plot_summary_stats, eval=F}
+# fetch organ-specific peak2gene links
+for (organ in tissue_meta$organ){
+  atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/02/"), organ, "/atac_preprocess_output/ATAC_obj_clustered_peaks_final_decontx"))
+  
+  # filter out RNA genes not present in the ArchR annotation (mostly antisense and lncRNA)
+  p2gtmp <- metadata(atac_proj@peakSet)$Peak2GeneLinks
+  
+  rna_genes <- metadata(p2gtmp)$geneSet
+  atac_genes <- getGenes()
+  genespf <- which(rna_genes$name %in% atac_genes$symbol)
+  p2gpf <- p2gtmp[p2gtmp$idxRNA %in% genespf,]
+  
+  # without thresholding
+  p1 <- gghistogram(p2gtmp$Correlation) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("Correlation")
+  p2 <- gghistogram(p2gpf$Correlation) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("Correlation")
+  
+  p3 <- gghistogram(p2gtmp$FDR) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("FDR") + scale_x_log10()
+  p4 <- gghistogram(p2gpf$FDR) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + scale_x_log10()
+  
+  p5 <- gghistogram(p2gtmp$VarQATAC) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("VarQATAC")
+  p6 <- gghistogram(p2gpf$VarQATAC) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + xlab("VarQATAC")
+  
+  p7 <- gghistogram(p2gtmp$VarQRNA) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("VarQRNA")
+  p8 <- gghistogram(p2gpf$VarQRNA) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + xlab("VarQRNA")
+  
+  # try some different correlation cutoffs
+  corcut_ls <- c(0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55)
+  out_ls <- c()
+  for (corcut in corcut_ls){
+    n <- dim(p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>corcut & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25))[1]
+    out_ls <- c(out_ls, n)  
+  }
+  df <- data.frame(correlation_cutoff=corcut_ls, num_p2glinks=out_ls)
+  p9 <- ggplot(df, aes(x=correlation_cutoff, y=num_p2glinks)) + geom_point() + ggtitle(organ)
+  
+  # after default thresholding cor>0.45, FDR<1e-4, varQATAC>0.25 and varQRNA>0.25
+  p2gpf_filt <- p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>0.45 & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25)
+  dim(p2gpf_filt)
+  
+  # plot #genes linked per peak and #peaks linked per gene
+  df1 <- p2gpf_filt$idxATAC %>% table %>% as.data.frame %>% dplyr::rename(num_linked_gene="Freq", peak_id=".") %>% arrange(desc(num_linked_gene)) 
+  df1$peak_rank <- 1:dim(df1)[1]
+  df2 <- p2gpf_filt$idxRNA %>% table %>% as.data.frame %>% dplyr::rename(num_linked_peak="Freq", gene_id=".") %>% arrange(desc(num_linked_peak))
+  df2$gene_rank <- 1:dim(df2)[1]
+  p10 <- ggplot(df1, aes(x=peak_rank, y=num_linked_gene)) + geom_point() + theme_BOR()
+  p11 <- ggplot(df2, aes(x=gene_rank, y=num_linked_peak)) + geom_point() + theme_BOR()
+  
+  pdf(paste0(figout, "/p2g_summary_stats_", organ, ".pdf"), height=5, width=5)
+  for (p in (paste0("p", 1:11))){
+    eval(as.symbol(p)) %>% print
+  }
+  dev.off()
+}
+
+```
+# Plot P2G summary stats global
+```{r p2g_summary_stats_global, fig.width=5, fig.height=5}
+
+atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/03"), "/allSamples_decontx"))
+
+# filter out RNA genes not present in the ArchR annotation (mostly antisense and lncRNA)
+p2gtmp <- metadata(atac_proj@peakSet)$Peak2GeneLinks
+
+rna_genes <- metadata(p2gtmp)$geneSet
+atac_genes <- getGenes()
+genespf <- which(rna_genes$name %in% atac_genes$symbol)
+p2gpf <- p2gtmp[p2gtmp$idxRNA %in% genespf,]
+
+# without thresholding
+p1 <- gghistogram(p2gtmp$Correlation) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("Correlation")
+p2 <- gghistogram(p2gpf$Correlation) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("Correlation")
+
+p3 <- gghistogram(p2gtmp$FDR) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("FDR") + scale_x_log10()
+p4 <- gghistogram(p2gpf$FDR) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + scale_x_log10()
+
+p5 <- gghistogram(p2gtmp$VarQATAC) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("VarQATAC")
+p6 <- gghistogram(p2gpf$VarQATAC) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + xlab("VarQATAC")
+
+p7 <- gghistogram(p2gtmp$VarQRNA) + ggtitle(sprintf("unfiltered peak2gene links (%d peaks)", dim(p2gtmp)[1])) + theme_BOR() + xlab("VarQRNA")
+p8 <- gghistogram(p2gpf$VarQRNA) + ggtitle(sprintf("filtered peak2gene links (%d peaks)", dim(p2gpf)[1])) + theme_BOR()+ xlab("FDR") + xlab("VarQRNA")
+
+# try some different correlation cutoffs
+corcut_ls <- c(0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55)
+out_ls <- c()
+for (corcut in corcut_ls){
+  n <- dim(p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>corcut & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25))[1]
+  out_ls <- c(out_ls, n)  
+}
+df <- data.frame(correlation_cutoff=corcut_ls, num_p2glinks=out_ls)
+p9 <- ggplot(df, aes(x=correlation_cutoff, y=num_p2glinks)) + geom_point() + ggtitle("global")
+
+# after default thresholding cor>0.45, FDR<1e-4, varQATAC>0.25 and varQRNA>0.25
+p2gpf_filt <- p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>0.45 & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25)
+dim(p2gpf_filt)
+
+# plot #genes linked per peak and #peaks linked per gene
+df1 <- p2gpf_filt$idxATAC %>% table %>% as.data.frame %>% dplyr::rename(num_linked_gene="Freq", peak_id=".") %>% arrange(desc(num_linked_gene)) 
+df1$peak_rank <- 1:dim(df1)[1]
+df2 <- p2gpf_filt$idxRNA %>% table %>% as.data.frame %>% dplyr::rename(num_linked_peak="Freq", gene_id=".") %>% arrange(desc(num_linked_peak))
+df2$gene_rank <- 1:dim(df2)[1]
+p10 <- ggplot(df1, aes(x=peak_rank, y=num_linked_gene)) + geom_point() + theme_BOR()
+p11 <- ggplot(df2, aes(x=gene_rank, y=num_linked_peak)) + geom_point() + theme_BOR()
+
+for (p in (paste0("p", 1:11))){
+  eval(as.symbol(p)) %>% print
+}
+
+```
+# Enrichment of TFs in HRGs across organs and globally
+This is to answer the question whether it's true that HRGs pick up mostly TFs
+```{r}
+# get all human TFs from lambert 2018
+lambert <- read.csv(here::here("data/external/Lambert2018/lambert2018_tables1.csv"))
+alltf <- lambert %>% dplyr::filter(IsTF=="Yes") %>% dplyr::select("Name") %>% unlist %>% unname
+
+
+# define HRG cutoff based on J plot per organ
+hrg_cutoff <- list(
+  "Adrenal" = 5,
+  "Brain" = 4,
+  "Eye" = 5,
+  "Heart" = 6,
+  "Liver" = 15,
+  "Lung" = 2,
+  "Muscle" = 3,
+  "Skin" = 4,
+  "Spleen" = 9,
+  "StomachEsophagus" = 5,
+  "Thymus" = 25,
+  "Thyroid" = 4,
+  "global" = 15
+  )
+
+all_expr_genes <- c()
+# fetch organ-specific peak2gene links
+for (organ in names(hrg_cutoff)){
+  
+  message(organ)
+  if (organ == "global"){
+    atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/03"), "/allSamples_decontx"))
+  } else{
+    atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/02/"), organ, "/atac_preprocess_output/ATAC_obj_clustered_peaks_final_decontx"))
+  }
+  
+  # filter out RNA genes not present in the ArchR annotation (mostly antisense and lncRNA)
+  p2gtmp <- metadata(atac_proj@peakSet)$Peak2GeneLinks
+  
+  rna_genes <- metadata(p2gtmp)$geneSet
+  atac_genes <- getGenes()
+  genespf <- which(rna_genes$name %in% atac_genes$symbol)
+  p2gpf <- p2gtmp[p2gtmp$idxRNA %in% genespf,]
+  
+  # default thresholding
+  p2gpf_filt <- p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>0.45 & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25)
+  
+  # get #peaks linked per gene
+  df2 <- p2gpf_filt$idxRNA %>% table %>% as.data.frame %>% dplyr::rename(num_linked_peak="Freq", gene_id=".") %>% arrange(desc(num_linked_peak))
+  df2$gene_rank <- 1:dim(df2)[1]
+  df2$gene_id <- df2$gene_id %>% as.character %>% as.integer
+  
+  # plot J plot again with hrg cutoff
+  df2$color <- "gray"
+  df2[df2$num_linked_peak>hrg_cutoff[[organ]], "color"] <- "red"
+  df2$gene_name <- p2gpf@metadata$geneSet[df2$gene_id]$name
+  p1 <- ggplot(df2, aes(x=gene_rank, y=num_linked_peak, col=color)) + geom_point() + theme_BOR() +
+    geom_hline(yintercept=hrg_cutoff[[organ]],linetype = 'dashed', col = 'gray') + 
+    scale_color_manual(values=c("gray", "red")) + 
+    ggrepel::geom_label_repel(data=subset(df2, num_linked_peak>hrg_cutoff[[organ]]), aes(label=gene_name)) + 
+    theme(legend.position = "none") + 
+    annotate("text", x = max(df2$gene_rank)*0.8, y = hrg_cutoff[[organ]], label = paste0("total HRG genes = ", dim(df2[df2$num_linked_peak>hrg_cutoff[[organ]],])[1], "\n with n linked peaks > ", hrg_cutoff[[organ]]), vjust = -0.5) + 
+    ggtitle(organ)
+  
+  # get the HRG names
+  hrg_name <- df2 %>% dplyr::filter(num_linked_peak > hrg_cutoff[[organ]]) %>% dplyr::select(gene_name) %>% unlist %>% unname
+  
+  ## get the universe of all genes that were tested for p2g links
+  #all_tested_genes <- p2gpf@metadata$geneSet[p2gpf$idxRNA %>% unique]$name
+  
+  # get the universe of all expressed genes in the organ
+  if (organ!="global"){
+    organcode <- tissue_meta[tissue_meta$organ==organ,]$organcode
+    avg_exp <- readRDS(paste0(here::here("output/02-global_analysis/02/"), organcode, "_avg_exp.decontx.Rds")) 
+    all_tested_genes <- rownames(avg_exp)[rowSums(avg_exp>1)>0] # gene has a ln(scaled count+1)>1 in at least 1 cluster
+    all_expr_genes <- c(all_expr_genes, all_tested_genes) # add all expressed genes to a sum
+  } else{
+    all_tested_genes <- all_expr_genes %>% unique
+  }
+  length(all_tested_genes)
+  
+  # construct confusion matrix
+  dat <- data.frame(
+  "is_tf" = c(sum(hrg_name %in% alltf), sum(all_tested_genes %in% alltf)),
+  "not_tf" = c(sum(!hrg_name %in% alltf), sum(!all_tested_genes %in% alltf)),
+  row.names = c("hrg", "all_p2g_tested_genes"),
+  stringsAsFactors = FALSE
+  )
+  colnames(dat) <- c("is_tf", "not_tf")
+  
+  # fisher's test
+  test <- fisher.test(dat, alternative = "greater") # one sided fisher's exact to test for enrichment of TF
+
+  pdf(paste0(figout, "/hrg_tf_enrichment_fisher_", organ, ".pdf"), height=5, width=5)
+  print(p1)
+  mosaicplot(dat, main = "Mosaic plot", color = TRUE, sub = paste0(organ, " Fisher's Exact Test (p=",ifelse(test$p.value < 0.001, "< 0.001", round(test$p.value, 3)), ")"))
+  plot(tableGrob(dat))
+  dev.off()
+  
+  # GO enrichment
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=hrg_name, nodeSize=5, ontology="BP") 
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  
+  pdf(paste0(figout, "/hrg_go_enrichment_", organ, ".pdf"), height=5, width=8)
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet, 
+                       nterms=15, border_color="black", 
+                       barwidth=0.85, title=organ, barLimits=c(0, 5)))
+  }
+  dev.off()
+}
+```
+
+
+# Output a global p2g data frame for enhancer annotation
+```{r}
+
+# get the global peak set
+global_peaks <- readRDS(here::here("output/04-enhancers/01/peaks_all_df.rds"))
+global_peaks_gr <- GRanges(global_peaks)
+
+# fetch organ-specific peak2gene links
+for (organ in names(hrg_cutoff)){
+  message(organ)
+  if (organ == "global"){
+    atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/03"), "/allSamples_decontx"))
+  } else{
+    atac_proj <- loadArchRProject(paste0(here::here("output/01-preprocessing/02/"), organ, "/atac_preprocess_output/ATAC_obj_clustered_peaks_final_decontx"))
+  }
+  
+  # filter out RNA genes not present in the ArchR annotation (mostly antisense and lncRNA)
+  p2gtmp <- metadata(atac_proj@peakSet)$Peak2GeneLinks
+  
+  rna_genes <- metadata(p2gtmp)$geneSet
+  atac_genes <- getGenes()
+  genespf <- which(rna_genes$name %in% atac_genes$symbol)
+  p2gpf <- p2gtmp[p2gtmp$idxRNA %in% genespf,]
+  
+  # default thresholding
+  p2gpf_filt <- p2gpf %>% as.data.frame %>% dplyr::filter(Correlation>0.45 & FDR<1e-4 & VarQATAC>0.25 & VarQRNA>0.25)
+  p2gpf_filt$gene_name <- p2gpf@metadata$geneSet[p2gpf_filt$idxRNA]$name
+  
+  # get #genes linked per peak
+  df1 <- p2gpf_filt$idxATAC %>% table %>% as.data.frame %>% dplyr::rename(num_linked_gene="Freq", peak_id=".") %>% arrange(desc(num_linked_gene)) 
+  df1$peak_rank <- 1:dim(df1)[1]
+  df1$peak_id <- df1$peak_id %>% as.character %>% as.integer
+  
+  # get #peaks linked per gene
+  df2 <- p2gpf_filt$idxRNA %>% table %>% as.data.frame %>% dplyr::rename(num_linked_peak="Freq", gene_id=".") %>% arrange(desc(num_linked_peak))
+  df2$gene_rank <- 1:dim(df2)[1]
+  df2$gene_id <- df2$gene_id %>% as.character %>% as.integer
+  df2$gene_name <- p2gpf@metadata$geneSet[df2$gene_id]$name
+  
+  # get the HRG names
+  hrg_name <- df2 %>% dplyr::filter(num_linked_peak > hrg_cutoff[[organ]]) %>% dplyr::select(gene_name) %>% unlist %>% unname
+  
+  # output: is linked to any gene
+  is_linked_to_gene <- p2gpf@metadata$peakSet[p2gpf_filt$idxATAC]
+  global_peaks[paste0("is_linked_to_gene_", organ)] <- 0
+  global_peaks[findOverlaps(is_linked_to_gene, global_peaks_gr)@to, paste0("is_linked_to_gene_", organ)] <- 1
+  
+  # output: number of linked genes
+  overlap <- findOverlaps(p2gpf@metadata$peakSet[df1$peak_id], global_peaks_gr)
+  global_peaks[paste0("n_linked_gene_", organ)] <- 0
+  global_peaks[overlap@to, paste0("n_linked_gene_", organ)] <- df1[overlap@from, "num_linked_gene"]
+  
+  # output: concatenated linked gene names
+  global_peaks[paste0("linked_gene_", organ)] <- "None"
+  df <- p2gpf_filt %>% group_by(idxATAC) %>% dplyr::summarise(p2g_linked_gene = paste(gene_name, collapse = ";"))
+  overlap <- findOverlaps(p2gpf@metadata$peakSet[df$idxATAC], global_peaks_gr) # the idxATAC order from p2g should be identical to global peaks order but still doing overlap for code robustness
+  global_peaks[overlap@to, paste0("linked_gene_", organ)] <- df[overlap@from, "p2g_linked_gene"] %>% unlist %>% unname
+  
+  # output: is_hrp
+  idx <- p2gpf@metadata$peakSet[p2gpf_filt[p2gpf_filt$gene_name %in% hrg_name,"idxATAC"]]
+  global_peaks[paste0("is_hrp_", organ)] <- 0
+  global_peaks[findOverlaps(idx, global_peaks_gr)@to, paste0("is_hrp_", organ)] <- 1
+  
+}
+
+saveRDS(global_peaks, paste0(out, "/p2g_stats_df.rds"))
+```
+# multi-organ p2g links 
+```{r n_organ_peak_linked_to_gene, fig.width=5, fig.height=5}
+test <- global_peaks[,colnames(global_peaks)[grepl("is_linked_to_gene",colnames(global_peaks))]] 
+test$n_organ_linked_to_gene <- rowSums(test)
+test <- test %>% dplyr::arrange(desc(n_organ_linked_to_gene))
+test$peak_rank <- 1:dim(test)[1]
+
+p1 <- ggplot(test, aes(x=peak_rank, y=n_organ_linked_to_gene)) + rasterise(geom_point(), dpi = 150) + theme_BOR()
+
+
+# try some different n_organ cutoffs
+norg_ls <- c(0, 1, 2, 3, 4, 5, 6, 7, 8)
+out_ls <- c()
+for (norg_cut in norg_ls){
+  n <- sum(test$n_organ_linked_to_gene>norg_cut)
+  out_ls <- c(out_ls, n)  
+}
+df <- data.frame(n_organ_cutoff=norg_ls, n_peaks=out_ls)
+p2 <- ggplot(df, aes(x=n_organ_cutoff, y=n_peaks)) + geom_point() + theme_BOR()
+
+p1
+p2
+
+```
+

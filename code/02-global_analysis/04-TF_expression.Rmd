@@ -1,0 +1,305 @@
+---
+title: "Prep TF expression"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+hdma_path   <- trimws(readr::read_lines("../ROOT_DIR.txt"))
+kundaje_dir <- trimws(readr::read_lines("../AK_PROJ_DIR.txt"))
+doc_id      <- "04" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- file.path(hdma_path, "output/02-global_analysis/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- file.path(hdma_path, "figures/02-global_analysis", doc_id, "/")
+script_path <- file.path(hdma_path, "code/utils/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+
+# Overview
+
+In this analysis we prepare matrices with mean expression of each TF per cluster.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(ArchR)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggrepel)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(cowplot)
+library(Seurat)
+library(jsonlite)
+
+# shared project scripts/functions
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_min())
+
+```
+
+
+# Get metadata
+
+```{r}
+
+tissue_meta <- read_tsv("01-organs_keep.tsv")
+cluster_meta <- read_csv(file.path(hdma_path, "output/05-misc/03/TableS2_cluster_meta_qc.csv"))
+
+```
+
+
+
+# Extract TF mean expression per cluster
+
+This builds on code from the `02` dendrogram notebook. We calculate the mean expression on both the RNA (scaled/log-normalized) and decontX counts, as well as detection rate on each.
+
+```{r cisbp}
+
+# get the list of TFs of interest
+cisbp2021 <- readRDS(file.path(hdma_path, "data/external/Kartha2022_cisbp/cisBP_human_pfms_2021.rds"))
+tf.list <- names(cisbp2021)
+
+# note naming differences and add hyphens for NKX TFs
+tf.list[grepl("^NKX", tf.list)]
+tf.list[grepl("^NKX", tf.list)] <- c("NKX1-1", "NKX1-2", "NKX2-1", "NKX2-2", "NKX2-3", "NKX2-4", "NKX2-5", "NKX2-6", "NKX2-8", "NKX3-1", "NKX3-2", "NKX6-1", "NKX6-2", "NKX6-3")
+tf.list[grepl("^NKX", tf.list)]
+
+```
+
+```{r get_tf_expression, eval = FALSE}
+
+## get RNA data ----------------------------------------------------------------------
+
+for (i in 1:nrow(tissue_meta)){
+  
+  organ <- tissue_meta$organ[i]
+  organcode <- tissue_meta$organcode[i]
+  
+  message(sprintf("@ current organ: %s", organ))
+  
+  out_files <- c(file.path(out, sprintf("tf_gex_rna.mean.%s.rds", organcode)),
+                 file.path(out, sprintf("tf_gex_rna.detection.%s.rds", organcode)),
+                 file.path(out, sprintf("tf_gex_decontx.mean.%s.rds", organcode)),
+                 file.path(out, sprintf("tf_gex_decontx.detection.%s.rds", organcode)))
+  
+  if (all(file.exists(out_files))) {
+    
+    message("@ done, skipping.")
+    
+  } else {
+    
+    # read cluster id annotation
+    annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta.txt"),
+                              organcode), sep="\t") %>% as.data.frame
+    rownames(annot) <- annot$cb
+    
+    # Raw RNA counts -------------------------------------------------------------
+    # get gene expression (RNA raw counts, scaled to 10000 per cell then log-transformed)
+    message("fetching gene expression from RNA assay")
+    rna_proj <- readRDS(
+      sprintf(here::here("output/01-preprocessing/02/%s/rna_preprocess_output/RNA_obj_clustered_final.rds"),
+              organ))
+    DefaultAssay(rna_proj) <- "RNA" # set to RNA in order to normalize RNA assay.
+    rna_proj <- NormalizeData(rna_proj, assay = "RNA")
+    gex.df <- FetchData(rna_proj, vars = tf.list[tf.list %in% rownames(rna_proj)], slot = "data")
+    
+    # add cluster
+    gex.df$cluster <-  paste0(organcode, "_",annot[rownames(gex.df),"L1_clusterID"]) # e.g. AG_0, AG_10
+    gex.df.mean <- gex.df %>% group_by(cluster) %>% dplyr::summarize(across(everything(), mean)) %>% as.data.frame
+    
+    saveRDS(gex.df.mean, file.path(out, sprintf("tf_gex_rna.mean.%s.rds", organcode)))
+    
+    # detection rate -------------------------------------------------------------
+    rna.detection <- calc_pct1(gex.df, "cluster")
+    
+    saveRDS(rna.detection, file.path(out, sprintf("tf_gex_rna.detection.%s.rds", organcode)))
+    
+    dim(gex.df.mean)
+    dim(rna.detection)
+    
+    # DecontX --------------------------------------------------------------------
+    message("@ fetching gene expression from decontX assay")
+    # get decontX normalized data but get TF genes only
+    DefaultAssay(rna_proj) <- "decontX"
+    gex.df <- FetchData(rna_proj, vars = tf.list[tf.list %in% rownames(rna_proj)], slot = "data")
+    
+    # add cluster
+    gex.df$cluster <-  paste0(organcode, "_",annot[rownames(gex.df),"L1_clusterID"]) # e.g. AG_0, AG_10
+    gex.df.mean <- gex.df %>% group_by(cluster) %>% dplyr::summarize(across(everything(), mean)) %>% as.data.frame
+    
+    saveRDS(gex.df.mean, file.path(out, sprintf("tf_gex_decontx.mean.%s.rds", organcode)))
+    
+    # detection rate -------------------------------------------------------------
+    decontx_detection <- calc_pct1(gex.df, "cluster")
+    
+    saveRDS(decontx_detection, file.path(out, sprintf("tf_gex_decontx.detection.%s.rds", organcode)))
+    
+    dim(gex.df.mean)
+    dim(decontx_detection)
+    
+    rm(rna_proj)
+    
+    message("@ done.")
+    
+  }
+}
+
+```
+
+Load outputs and combine:
+
+```{r combine_dfs, eval = FALSE}
+
+# write out gene expression averaged per cluster, binding all rows together
+# dplyr::bind_rows(will fill NAs for missing columns between dataframes being bound togetther)
+tf_gex_rna.mean <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("tf_gex_rna.mean.{.x}.rds")))) %>% 
+  bind_rows()
+
+tf_gex_rna.detection <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("tf_gex_rna.detection.{.x}.rds")))) %>% 
+  bind_rows()
+
+tf_gex_decontx.mean <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("tf_gex_decontx.mean.{.x}.rds")))) %>% 
+  bind_rows()
+
+tf_gex_decontx.detection <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("tf_gex_decontx.detection.{.x}.rds")))) %>% 
+  bind_rows()
+
+dim(tf_gex_rna.mean)
+dim(tf_gex_rna.detection)
+dim(tf_gex_decontx.mean)
+dim(tf_gex_decontx.detection)
+
+saveRDS(dplyr::bind_rows(tf_gex_rna.mean),          file.path(out, "tf_gex_rna.mean.rds"))
+saveRDS(dplyr::bind_rows(tf_gex_decontx.mean),      file.path(out, "tf_gex_decontx.mean.rds"))
+saveRDS(dplyr::bind_rows(tf_gex_rna.detection),     file.path(out, "tf_gex_rna.detectionrate.rds"))
+saveRDS(dplyr::bind_rows(tf_gex_decontx.detection), file.path(out, "tf_gex_decontx.detectionrate.rds"))
+
+```
+
+Let's also try organizing TFs by their motif families. Load in the HOCOMOCO annotations
+from https://hocomoco12.autosome.org/downloads_v12.
+
+```{r load_hocomoco}
+
+# load in the HOCOMOCO v12 TF family annotation
+# following https://stackoverflow.com/a/62311093 to read in JSON lines
+lines <- readLines(file.path(kundaje_dir, "refs/HOCOMOCO/H12CORE_annotation.jsonl"))
+lines <- lapply(lines, jsonlite::fromJSON)
+lines <- lapply(lines, unlist)
+hocomoco <- bind_rows(lines)
+
+DT::datatable(head(hocomoco))
+
+hocomoco %>% write_tsv(glue("{out}/H12CORE_annotation.tsv"))
+
+```
+
+
+Explore HOCOMOCO annotations:
+
+```{r explore_hocomoco}
+
+hocomoco$masterlist_info.tfclass_family %>% unique()
+hocomoco$masterlist_info.tfclass_subfamily %>% unique()
+
+sum(is.na(hocomoco$masterlist_info.tfclass_family))
+sum(is.na(hocomoco$masterlist_info.tfclass_subfamily))
+
+# since subfamilies contain NAs, let's concatenate the two
+hocomoco$Annotation <- paste0(hocomoco$masterlist_info.tfclass_id, "_", hocomoco$masterlist_info.tfclass_family, "_", hocomoco$masterlist_info.tfclass_subfamily)
+
+# how many entries per gene symbol
+hocomoco_tab <- hocomoco %>%
+  group_by(masterlist_info.species.HUMAN.gene_symbol) %>%
+  mutate(n_entries = n()) %>% 
+  group_by(masterlist_info.species.HUMAN.gene_symbol, n_entries) %>% 
+  summarize(annotations = glue_collapse(Annotation, sep = ", "),
+            n_families = length(unique(Annotation))) %>% 
+  arrange(desc(n_entries)) %>% 
+  filter(n_entries > 1)
+
+max(hocomoco_tab$n_families)
+
+# even when there are multiple entries (motifs?) the TF always has the same family,
+# so let's grab distinct ones
+hocomoco_unique <- hocomoco %>% 
+  distinct(masterlist_info.species.HUMAN.gene_symbol, .keep_all = TRUE)
+
+hocomocotf_order <- hocomoco_unique %>% 
+  arrange(Annotation) %>% 
+  pull(masterlist_info.species.HUMAN.gene_symbol)
+
+
+write_tsv(hocomoco_unique, file = glue("{out}/hocomoco_unique.tsv"))
+
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```

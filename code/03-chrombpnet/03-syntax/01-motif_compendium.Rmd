@@ -1,0 +1,1297 @@
+---
+title: "Exploration of de novo learned motifs"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+kundaje_dir <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+doc_id      <- "01"
+out         <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here("figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
+
+```
+
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+In this notebook, we do global investigations of the de novo motifs:
+
+- computing stats on the motif instances such as frequencies per peak
+- summarize each motif's distribution of distances to nucleosome dyads and peak flanks
+- distribution of motif instances in genomic features
+- distribution of motif instances in tissues and tissue compartments
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(glue)
+library(scales)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(purrr)
+library(stringr)
+library(ggrepel)
+library(cowplot)
+library(plotly)
+library(ggseqlogo)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "chrombpnet_utils.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+# Load & wrangle data
+
+Cluster metadata:
+
+```{r load_cluster_meta}
+
+cluster_meta <- read_csv(here("output/05-misc/03/TableS2_cluster_meta_qc.csv"))
+
+chrombpnet_models_keep <- read_tsv(here("output/03-chrombpnet/01-models/qc/chrombpnet_models_keep2.tsv"),
+                                   col_names = c("Cluster", "Folds_keep", "Cluster_ID"))
+
+cluster_order <- cluster_meta %>% arrange(organ, L1_annot) %>% pull(Cluster_ChromBPNet)
+organs <- unique(cluster_meta$organ) %>% sort()
+organs[organs == "StomachEsophagus"] <- "Stomach"
+
+head(chrombpnet_models_keep)
+
+```
+
+Load metrics:
+
+```{r}
+
+chrombpnet_metrics <- read_tsv(here("output/03-chrombpnet/01-models/qc/chrombpnet_metrics.tsv")) %>% 
+  dplyr::select(Cluster_ChromBPNet, total_frags) %>% 
+  distinct()
+
+```
+
+
+Load number of peaks:
+
+```{r load_npeaks}
+
+npeaks <- read_table(here("output/03-chrombpnet/01-models/qc/npeaks.tsv"),
+                   col_names = c("n_peaks", "peak_file")) %>% 
+  filter(peak_file != "total")
+
+nrow(npeaks) == 203
+
+npeaks <- npeaks %>% 
+  rowwise() %>% 
+  mutate(peak_file = basename(peak_file)) %>% 
+  separate(peak_file, into = c("Cluster_ChromBPNet", "drop"), sep = "__") %>% 
+  dplyr::select(-drop)
+
+cluster_meta <- cluster_meta %>%
+  left_join(npeaks, by = "Cluster_ChromBPNet") %>% 
+  left_join(chrombpnet_metrics, by = "Cluster_ChromBPNet")
+
+```
+
+
+Load merged modisco reports:
+
+```{r load_modisco_merged}
+
+modisco_merged <- read_tsv(here("output/03-chrombpnet/02-compendium/modisco_compiled_anno/modisco_merged_reports.tsv")) %>% 
+  # get short cluster ID
+  left_join(cluster_meta %>% dplyr::select(Cluster, Cluster_ChromBPNet),
+            by = c("component_celltype" = "Cluster_ChromBPNet"))
+
+head(modisco_merged)
+
+```
+
+
+Load annotated patterns:
+
+```{r load_motifs_compiled}
+
+# manually annotated motif patterns
+motifs_compiled_all <- read_tsv("../02-compendium/04d-ChromBPNet_de_novo_motifs.tsv") %>% 
+  mutate(motif_name = paste0(idx_uniq, "|", annotation)) %>% 
+  dplyr::relocate(motif_name, .after = pattern) %>%
+  dplyr::relocate(idx_uniq, .after = idx) %>% 
+  # rename categories
+  mutate(category = ifelse(annotation == "exclude", "exclude", category),
+         category = case_match(category,
+                               "composite_homo" ~ "homocomposite",
+                               "composite_hetero" ~ "heterocomposite",
+                               .default = category),
+         category = factor(category, levels = names(cmap_category)),
+         pattern_class = dplyr::recode(pattern_class, pos = "pos_patterns", neg = "neg_patterns"))
+
+motifs_compiled <- motifs_compiled_all %>% 
+  # filter out exclude motifs
+  filter(category != "exclude") %>% 
+  # extract the name of the known motif
+  separate(match0, into = c("TF0", "motif0"), sep = ": ")
+
+# for cases with multiple patterns merged into one motif, take the one with the most
+# number of seqlets.
+motifs_compiled_unique <- motifs_compiled %>% 
+  group_by(idx_uniq) %>% 
+  slice_max(n = 1, order_by = tibble(total_n_seqlets, n_component_celltypes),
+            with_ties = FALSE)
+
+dim(motifs_compiled_unique)
+
+# get positive and negative patterns
+pos_patterns <- motifs_compiled_unique %>% filter(pattern_class == "pos_patterns") %>% pull(motif_name)
+length(pos_patterns)
+
+neg_patterns <- motifs_compiled_unique %>% filter(pattern_class == "neg_patterns") %>% pull(motif_name)
+length(neg_patterns)
+
+# initial breakdown of motif categories, prior manual collapsing
+table(motifs_compiled_all$category)
+
+# breakdown after manual collapsing & removing low-quality motifs
+table(motifs_compiled_unique$category)
+
+dim(motifs_compiled_unique)
+
+```
+
+Thus, in total we have:  
+
+- **`r nrow(motifs_compiled_unique)` unique motifs** learned from the dataset 
+- **`r length(pos_patterns)` positive patterns**
+- **`r length(neg_patterns)` negative patterns**
+
+_**NOTE:**_ There are 509 unique motifs, and the labels go from 0 to 508 (which spans 509 values). The 
+"missing label" is for `idx_uniq` 466, which corresponded to unresolved motifs which
+were filtered out.
+
+
+
+Load reconciled hit calls:
+
+```{r load_hits}
+
+finemo_param <- "counts_v0.23_a0.8_all"
+
+# load hit counts per motif per cell type
+hits <- map(chrombpnet_models_keep$Cluster,
+            ~ data.table::fread(here(glue("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{.x}/{finemo_param}/hits_per_motif.tsv")),
+                                data.table = FALSE) %>%
+              dplyr::rename(n = count) %>% 
+              tibble::add_column(Cluster = .x, .before = 1)) %>%
+  setNames(chrombpnet_models_keep$Cluster)
+
+# sanity check
+n_cols <- map_dbl(hits, ncol)
+
+if (any(n_cols < 12)) {
+  
+  missing_cols <- names(n_cols[n_cols < 12])
+  stop("@ Missing columns in ", glue_collapse(missing_cols, ", "))
+  
+}
+
+saveRDS(hits, file = glue("{out}/hits.Rds"))
+
+# load summary stats on hits per peak per cell type
+hits_per_peak <- map_dfr(chrombpnet_models_keep$Cluster,
+                         ~ data.table::fread(here(glue("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{.x}/{finemo_param}/hits_per_peak.tsv")),
+                                             data.table = FALSE) %>%
+                           tibble::add_column(Cluster = .x, .before = 1))
+
+```
+
+
+
+Calculate total number of hits per pattern per cell type:
+
+```{r total_hits_per_pattern}
+
+hits_all <- bind_rows(hits)
+
+if (!all(motifs_compiled_unique$motif_name %in% hits_all$motif_name) | !all(hits_all$motif_name %in% motifs_compiled$motif_name)) {
+  
+  stop("@ Motif names in annotation don't match motif names in hits.")
+  
+}
+
+hits_all_totals <- hits_all %>%
+  group_by(motif_name) %>%
+  summarize(total_hits = sum(n))
+
+# organ w/ most hits
+hits_top_organ <- hits_all %>% 
+  left_join(cluster_meta %>% dplyr::select(Cluster = Cluster_ChromBPNet, organ)) %>% 
+  group_by(motif_name, organ) %>% 
+  summarize(hits_per_organ = sum(n)) %>% 
+  group_by(motif_name) %>% 
+  slice_max(n = 1, order_by = hits_per_organ, with_ties = FALSE) %>% 
+  dplyr::select(motif_name, top_organ = organ)
+
+dim(hits_all_totals)
+dim(hits_top_organ)
+
+motifs_compiled_unique <- hits_all_totals %>% 
+  left_join(motifs_compiled_unique, by = "motif_name") %>% 
+  left_join(hits_top_organ, by = "motif_name") %>% 
+  mutate(motif_name_safe = gsub("\\/|\\||\\#", ".", motif_name)) %>% 
+  mutate(modisco_cwm_fwd = here(glue("output/03-chrombpnet/02-compendium/modisco_compiled/trimmed_logos/{pattern_class}.{pattern}.cwm.fwd.png")),
+         modisco_cwm_rev = here(glue("output/03-chrombpnet/02-compendium/modisco_compiled/trimmed_logos/{pattern_class}.{pattern}.cwm.rev.png")))
+
+# also subset to positive and neg patterns
+motifs_compiled_unique_pos <- motifs_compiled_unique %>% 
+  filter(pattern_class == "pos_patterns")
+
+motifs_compiled_unique_neg <- motifs_compiled_unique %>% 
+  filter(pattern_class == "neg_patterns")
+
+dim(motifs_compiled_unique_pos)
+
+hits_all_anno <- hits_all %>% 
+  left_join(cluster_meta %>% dplyr::rename(Cluster_short = Cluster), by = c("Cluster" = "Cluster_ChromBPNet")) %>% 
+  left_join(motifs_compiled_unique %>% dplyr::select(motif_name, pattern, annotation_broad, category))
+
+head(hits_all_anno)
+
+# breakdown of motif categories per pos patterns
+table(motifs_compiled_unique_pos$category)
+
+# save as TSV for re-use
+motifs_compiled_unique %>% write_tsv(glue("{out}/motifs_compiled_unique.tsv"))
+
+# short version
+motifs_compiled_unique %>%
+  arrange(idx_uniq) %>% 
+  dplyr::select(motif_name, total_hits, idx, idx_uniq, pattern_class, pattern,
+                annotation, annotation_broad, category,
+                TF0, motif0, qval0, top_organ, component_organs, component_celltypes) %>% 
+  write_tsv(glue("{out}/motifs_compiled_unique_short.tsv"))
+
+hits_all_anno %>% write_tsv(glue("{out}/hits_per_cluster_annotated.tsv"))
+
+```
+
+
+Prep the hit counts matrices across cell types:
+
+```{r prep_hits_mat}
+
+dim(hits_all)
+
+mat_hits <- hits_all %>%
+  filter(pattern_class == "pos_patterns") %>% 
+  left_join(motifs_compiled_unique_pos, by = c("motif_name", "pattern_class")) %>%
+  filter(category %in% c("base", "base_with_flank", "homocomposite", "heterocomposite")) %>%
+  dplyr::select(Cluster, motif_name, n) %>%
+  spread(motif_name, n, fill = 0) %>%
+  tibble::column_to_rownames(var = "Cluster") %T>%
+  write_tsv(glue("{out}/hit_matrix.pos_patterns_no_unresolved.tsv"))
+
+dim(mat_hits)
+
+hits_all_broad <- hits_all %>%
+  filter(pattern_class == "pos_patterns") %>% 
+  left_join(motifs_compiled_unique_pos, by = "motif_name") %>%
+  filter(category %in% c("base", "base_with_flank", "homocomposite", "heterocomposite")) %>%
+  group_by(annotation_broad, Cluster) %>%
+  summarize(n = sum(n))
+
+mat_hits_broad <- hits_all_broad %>%
+  spread(annotation_broad, n, fill = 0) %>%
+  tibble::column_to_rownames(var = "Cluster") %T>%
+  write_tsv(glue("{out}/hit_matrix.broad_pos_patterns_no_unresolved.tsv"))
+dim(mat_hits_broad)
+
+mat_hits_unresolved <- hits_all %>%
+  filter(pattern_class == "pos_patterns") %>% 
+  left_join(motifs_compiled_unique_pos, by = "motif_name") %>%
+  filter(category == "unresolved") %>%
+  dplyr::select(motif_name, n, Cluster) %>%
+  spread(motif_name, n, fill = 0) %>%
+  as.data.frame() %>%
+  tibble::column_to_rownames(var = "Cluster")
+
+dim(mat_hits_unresolved)
+
+```
+
+
+Load hit counts for binned distances to nucleosomes:
+
+```{r load_motif_dist_dyad}
+
+# load motif hit counts per binned distance to nucleosome dyads
+hit_dyad_dist <- map_dfr(chrombpnet_models_keep$Cluster,
+                         ~ data.table::fread(
+                           here(glue("output/03-chrombpnet/02-compendium/nucleoatac/{.x}/{.x}.motif_dist_to_dyad.tsv")),
+                           data.table = FALSE) %>%
+                           tibble::add_column(Cluster = .x, .before = 1))
+
+hit_dyad_dist <- left_join(hit_dyad_dist, motifs_compiled_unique, by = "motif_name")
+
+```
+
+
+Load hit counts for binned distances to peak summits:
+
+```{r load_motif_dist_summit}
+
+# load motif hit counts per binned distance to nucleosome dyads
+hit_summit_dist <- map_dfr(chrombpnet_models_keep$Cluster,
+                           ~ data.table::fread(
+                             here(glue("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{.x}/counts_v0.23_a0.8_all/motif_dist_to_summit.tsv")),
+                             data.table = FALSE) %>%
+                             tibble::add_column(Cluster = .x, .before = 1))
+
+hit_summit_dist <- left_join(hit_summit_dist, motifs_compiled_unique, by = "motif_name")
+
+```
+
+
+
+Load HOCOMOCO:
+
+```{r hocomoco}
+
+hocomoco <- read_tsv(here("output/02-global_analysis/04/hocomoco_unique.tsv"))
+
+unique_classes <- unique(hocomoco$masterlist_info.tfclass_class)
+cmap_class <- c(ArchR::paletteDiscrete(unique_classes, set = "stallion"), "N/A" = "gray90")
+
+```
+
+
+
+Load CWMs for the compiled motifs:
+
+```{r known_cwm}
+
+# use custom helper
+cwm_list <- read_cwm_meme(here(glue("output/03-chrombpnet/02-compendium/modisco_compiled/modisco_compiled.memedb.txt")))
+length(cwm_list)
+
+cwm_list <- cwm_list[base::intersect(names(cwm_list), motifs_compiled_unique$pattern)]
+length(cwm_list)
+
+names(cwm_list) <- plyr::mapvalues(names(cwm_list), from = motifs_compiled_unique$pattern, to = motifs_compiled_unique$motif_name)
+
+# label matrix dimensions
+cwm_list <- map(cwm_list, function(cwm) {
+  
+  rownames(cwm) <- c("A", "C", "G", "T")
+  colnames(cwm) <- seq(1:30)
+  
+  return(cwm)
+  
+})
+
+print(length(cwm_list))
+saveRDS(cwm_list, file = glue("{out}/denovo_cwm_list.Rds"))
+
+```
+
+
+## Save intermediate objects
+
+```{r}
+
+save(chrombpnet_models_keep, cluster_meta, motifs_compiled_unique, motifs_compiled_all,
+     cwm_list, hit_dyad_dist, hit_summit_dist, hits_all_anno, hits_per_peak,
+     file = glue("{out}/intermediate_obj.Rda"))
+
+```
+
+To reload:
+
+```{r, eval = FALSE}
+
+load(glue("{out}/intermediate_obj.Rda"))
+hits <- readRDS(glue("{out}/hits.Rds"))
+hits_all <- bind_rows(hits)
+
+```
+
+
+## Rename trimmed CWM logos:
+
+```{r, eval = FALSE}
+
+fs::dir_create(file.path(out, "trimmed_cwm_logos"))
+
+all(fs::file_exists(motifs_compiled_unique$modisco_cwm_fwd))
+all(fs::file_exists(motifs_compiled_unique$modisco_cwm_rev))
+
+for (i in 1:nrow(motifs_compiled_unique)) {
+  
+  new_name_fw <- paste0(motifs_compiled_unique$motif_name_safe[i], "__cwm.fwd.png")
+  fs::file_copy(motifs_compiled_unique$modisco_cwm_fwd[i], file.path(out, "trimmed_cwm_logos", new_name_fw), overwrite = TRUE)
+  
+  new_name_rev <- paste0(motifs_compiled_unique$motif_name_safe[i], "__cwm.rev.png")
+  fs::file_copy(motifs_compiled_unique$modisco_cwm_rev[i], file.path(out, "trimmed_cwm_logos", new_name_rev), overwrite = TRUE)
+  
+}
+
+```
+
+
+
+## Prep table
+
+```{r}
+
+motifs_compiled_unique %>% 
+  mutate(
+    class = case_when(
+      pattern_class == "pos_patterns" ~ "Activating",
+      TRUE ~ "Reducing"
+    ),
+    cwm_logo_fwd = paste0(motif_name_safe, "__cwm.fwd.png"),
+    cwm_logo_rev = paste0(motif_name_safe, "__cwm.rev.png"),
+  ) %>% 
+  dplyr::select(
+    idx_uniq,
+    motif_name,
+    motif_name_safe,
+    class,
+    total_instances_across_celltypes = total_hits,
+    cwm_logo_fwd,
+    cwm_logo_rev,
+    query_consensus,
+    annotation,
+    annotation_broad,
+    category,
+    best_match_TF = TF0,
+    best_match_motif = motif0,
+    best_match_TOMTOM_qval = qval0,
+    best_match_TFs_in_family = match0_TFs_in_family,
+    best_match_TFs_in_Vierstra_archetype = match0_TFs_in_archetype,
+    total_seqlets_across_celltypes = total_n_seqlets,
+    merged_pattern = pattern,
+    n_constituent_motifs = n_component_patterns,
+    n_constituent_celltypes = n_component_celltypes,
+    constituent_organs = component_organs,
+    constituent_celltypes = component_celltypes
+  ) %>% 
+  arrange(idx_uniq) %>% 
+  write_csv(glue("{out}/TABLE_motif_compendium.csv"))
+
+```
+
+
+# Global view
+
+## Categories of motifs
+
+What kinds of patterns did we detect?
+
+First, let's look at all 834 motifs from the motif clustering workflow.
+
+```{r breakdown_category, fig.width = 11, fig.height = 6}
+
+p1 <- motifs_compiled_all %>% 
+  group_by(category) %>% 
+  count() %>% 
+  # reverse levels since we're flipping coordinates
+  mutate(category = factor(category, levels = rev(names(cmap_category)))) %>% 
+  ggplot(aes(x = category, y = n)) +
+  geom_col(aes(fill = category)) +
+  geom_text(aes(label = n), hjust = -0.5, fontface = "bold", size = 4) +
+  coord_flip() +
+  scale_fill_manual(values = cmap_category) +
+  ggtitle("De novo deep learning derived motifs \n(after MoDISco agggregation step)") +
+  no_legend() +
+  theme(panel.grid.major.x = element_line(color = "gray90"),
+        panel.grid.minor.x = element_line(color = "gray90")) +
+  ylim(c(0, 280))
+
+p2 <- motifs_compiled_all %>% 
+  ggplot(aes(x = "breakdown")) +
+  geom_bar(aes(fill = category), position = "fill") +
+  scale_fill_manual(values = cmap_category)
+
+plot_grid(p1, p2, nrow = 1, align = "h", axis = "tb", rel_widths = c(0.65, 0.35))
+
+```
+
+
+Next, let's look at the unique motifs after QC and collapsing motifs:
+
+```{r barplot_n_motifs, fig.width = 10, fig.height = 5}
+
+# stacked barplot
+p1 <- motifs_compiled_unique %>% 
+  ggplot(aes(x = "breakdown")) +
+  geom_bar(aes(fill = category), position = "fill") +
+  scale_fill_manual(values = cmap_category) +
+  xlab(NULL) +
+  theme(legend.position = "bottom") +
+  no_legend()
+
+# barplot of counts per category
+p2 <- motifs_compiled_unique %>% 
+  group_by(category) %>% 
+  count() %>% 
+  # reverse levels since we're flipping coordinates
+  mutate(category = factor(category, levels = rev(names(cmap_category)))) %>% 
+  ggplot(aes(x = category, y = n)) +
+  geom_col(aes(fill = category)) +
+  geom_text(aes(label = n), hjust = -0.5, fontface = "bold", size = 4) +
+  coord_flip() +
+  scale_fill_manual(values = cmap_category) +
+  ggtitle("De novo deep learning derived motifs \n(after manual collapsing & removing low quality motifs)") +
+  no_legend() +
+  theme(panel.grid.major.x = element_line(color = "gray90"),
+        panel.grid.minor.x = element_line(color = "gray90")) +
+  ylim(c(0, 280))
+
+
+plot_grid(p1, p2, nrow = 1, align = "h", axis = "tb", rel_widths = c(1, 4, 3.5))
+
+```
+
+
+## Positive and negative patterns
+
+```{r pos_neg_breakdown, fig.width = 7, fig.height = 9}
+
+p1 <- motifs_compiled_unique %>% 
+  group_by(pattern_class) %>% 
+  count() %>% 
+  ggplot(aes(x = "1", y = n)) +
+  geom_col(aes(fill = pattern_class), alpha = 0.4) +
+  coord_flip() +
+  scale_fill_manual(values = c("pos_patterns" = "darkgreen", "neg_patterns" = "red")) +
+  ggtitle("De novo deep learning derived motifs") +
+  no_legend() +
+  theme(panel.grid.major.x = element_line(color = "gray90"),
+        panel.grid.minor.x = element_line(color = "gray90"))
+
+p2 <- hits_all %>%
+  left_join(cluster_meta %>% dplyr::select(Cluster = Cluster_ChromBPNet, organ)) %>% 
+  group_by(organ, pattern_class) %>%
+  summarize(n_hits = sum(n)) %>%
+  mutate(organ = factor(organ, levels = rev(unique(.$organ)))) %>% 
+  ggplot(aes(x = organ, y = n_hits)) +
+  geom_col(aes(fill = pattern_class), alpha = 0.4, position = "fill") +
+  coord_flip() +
+  scale_fill_manual(values = c("pos_patterns" = "darkgreen", "neg_patterns" = "red")) +
+  ggtitle("Breakdown of total hits") +
+  no_legend() +
+  theme(panel.grid.major.x = element_line(color = "gray90"),
+        panel.grid.minor.x = element_line(color = "gray90"))
+
+plot_grid(p1, p2, ncol = 1, align = "v", axis = "rl", rel_heights = c(1, 4))
+
+```
+
+
+## Similarity to known motifs
+
+Distribution of TOMTOM q-values for similarity to known motifs, and total # hits per motif:
+
+```{r boxplot_nhits_and_similarity, fig.width = 10, fig.height = 5}
+
+p1 <- motifs_compiled_unique %>%
+  mutate(similarity = qval0) %>%
+  ggplot(aes(x = category, y = -log10(qval0))) +
+  geom_boxplot(aes(fill = category), outliers = FALSE) +
+  geom_jitter(shape = 21, width = 0.2, size = 0.5) +
+  scale_fill_manual(values = cmap_category) +
+  geom_hline(yintercept = -log10(0.05)) +
+  no_legend() +
+  xlab(NULL) +
+  rotate_x()
+
+p2 <- motifs_compiled_unique %>% 
+  ggplot(aes(x = category, y = log10(total_hits))) +
+  geom_boxplot(aes(fill = category), outlier.colour = NA) +
+  geom_jitter(color = "black", width = 0.2, size = 0.5, shape = 21) +
+  scale_fill_manual(values = cmap_category) +
+  rotate_x() +
+  no_legend() +
+  # ggtitle("Total # of hits per unique motif \neach point is a motif (n=525)") +
+  coord_cartesian(ylim = c(1, 7))
+
+plot_grid(p1, p2, nrow = 1, align = "h", axis = "tb")
+
+```
+
+
+Total number of hits per cell type:
+
+```{r total_n_hits, fig.width = 22, fig.height = 8}
+
+hits_all %>%
+  group_by(Cluster, pattern_class) %>%
+  summarize(total_hits = sum(n)) %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet")) %>% 
+  arrange(organ, L1_annot) %>% 
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster))) %>% 
+  ggplot(aes(x = Cluster, y = total_hits)) +
+  facet_wrap(~ pattern_class, ncol = 1) +
+  geom_bar(stat = "identity", aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ylab("Total number of hits") +
+  theme(
+    strip.background = element_blank(),
+    axis.text.x = element_text(size = 5),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_line(color = "gray90")) +
+  scale_y_continuous(labels = scales::comma) +
+  ggtitle("Total hits per cell type")
+
+```
+
+
+
+## Total hits
+
+
+By class (positive/negative patterns):
+
+```{r total_n_hits_by_class, fig.width = 18, fig.height = 6}
+
+hits_all %>%
+  left_join(motifs_compiled_unique %>% dplyr::select(-pattern_class),
+            by = c("motif_name")) %>%
+  group_by(Cluster, pattern_class) %>%
+  summarize(n_per_class = sum(n)) %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet")) %>% 
+  arrange(organ, L1_annot) %>% 
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster))) %>% 
+  ggplot(aes(x = Cluster, y = n_per_class)) +
+  geom_bar(stat = "identity", aes(fill = pattern_class), alpha = 0.4, position = "fill") +
+  scale_fill_manual(values = c("pos_patterns" = "darkgreen", "neg_patterns" = "red")) +
+  rotate_x() +
+  ylab("Total number of hits") +
+  theme(
+    axis.text.x = element_text(size = 5),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_line(color = "gray90")) +
+  scale_y_continuous(labels = scales::comma) +
+  ggtitle("Total hits, by pattern class")
+
+```
+
+
+Let's plot total hits and mean hits per peak, grouped by organ:
+
+```{r nhits_per_cluster_aggregated_plot, fig.width = 10, fig.height = 6}
+
+p1 <- hits_all %>% 
+  group_by(Cluster, pattern_class) %>%
+  summarize(total_hits = sum(n)) %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet")) %>% 
+  arrange(organ, L1_annot) %>% 
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster)),
+         pattern_class = factor(pattern_class, levels = c("pos_patterns", "neg_patterns"))) %>% 
+  ggplot(aes(x = organ, y = total_hits)) +
+  geom_jitter(stat = "identity", aes(fill = organ), shape = 21, color = "white", size = 3, alpha = 0.6, width = 0.25) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  facet_wrap(~ pattern_class, ncol = 1) +
+  ylab("Total number of hits") +
+  theme(
+    strip.background = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_line(color = "gray90")) +
+  scale_y_continuous(labels = scales::comma) +
+  ggtitle("Total hits (+ patterns)") +
+  no_legend()
+
+p2 <- hits_per_peak %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet")) %>% 
+  arrange(organ, L1_annot) %>% 
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster))) %>% 
+  gather(pattern_class, median_n_hits, median_pos_patterns, median_neg_patterns) %>% 
+  mutate(pattern_class = factor(pattern_class, levels = c("median_pos_patterns", "median_neg_patterns"))) %>% 
+  ggplot(aes(x = organ, y = median_n_hits)) +
+  ggbeeswarm::geom_quasirandom(
+    aes(fill = organ), shape = 21, color = "white", size = 3, alpha = 0.6) + #, width = 0.25, height = 0) +
+  scale_fill_manual(values = cmap_organ) +
+  facet_wrap(~ pattern_class, ncol = 1) +
+  rotate_x() +
+  ylab("Median number of hits per peak (+ patterns)") +
+  theme(
+    strip.background = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_line(color = "gray90")) +
+  scale_y_continuous(breaks = seq(0, 10, 1), labels = seq(0, 10), limits = c(0, 9)) +
+  no_legend() +
+  ggtitle("Median hits per peak (+ patterns)")
+
+plot_grid(p1, p2, nrow = 1, align = "h", axis = "tb")
+
+```
+
+
+## Effects of coverage/peaks on number of hits
+
+Here we look at how total number of motif instances varies with total fragments
+and number of peaks:
+
+```{r scatter_peaks_vs_frags_vs_instances, fig.width = 15, fig.height = 8}
+
+# calculate total hist per cluster (incl. both pos/neg patterns)
+total_hits_per_cluster <- hits_all %>% 
+  group_by(Cluster) %>%
+  summarize(total_hits = sum(n)) %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet"))
+
+# this is for the 189 models which passed QC
+total_hits_per_cluster$Cluster %>% unique %>% length
+
+summary(total_hits_per_cluster$total_hits)
+
+cor_frags <- lm(total_hits_per_cluster$total_hits ~ total_hits_per_cluster$total_frags)
+summary(cor_frags)
+
+cor_peaks <- lm(total_hits_per_cluster$total_hits ~ total_hits_per_cluster$n_peaks)
+summary(cor_peaks)
+
+p1 <- total_hits_per_cluster %>% 
+  ggplot(aes(x = log10(total_frags), y = total_hits)) +
+  geom_point(aes(fill = organ), shape = 21, size = 3, alpha = 0.7, color = "white") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = label_number(scale = 1/1e6)) +
+  annotate("text", label = glue("cor = {round(sqrt(summary(cor_frags)$r.squared), 3)}, \nR^2 = {round(summary(cor_frags)$r.squared, 3)}"),
+           x = 7, y = 2e6, size = 5) +
+  xlab("log10(Total fragments)") + ylab("Total hits (x 1M)") +
+  square() +
+  ggtitle("# motif instances vs. \n# fragments") +
+  no_legend()
+
+p2 <- total_hits_per_cluster %>% 
+  ggplot(aes(x = n_peaks, y = total_hits)) +
+  geom_point(aes(fill = organ), shape = 21, size = 3, alpha = 0.7, color = "white") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = label_number(scale = 1/1e6)) +
+  scale_x_continuous(labels = scales::comma) +
+  annotate("text", label = glue("cor = {round(sqrt(summary(cor_peaks)$r.squared), 3)}, \nR^2 = {round(summary(cor_peaks)$r.squared, 3)}"),
+           x = 7e4, y = 2e6, size = 5) +
+  xlab("Total peaks") + ylab("Total hits (x 1M)") +
+  square() +
+  ggtitle("# motif instances vs. \n# peaks") +
+  no_legend()
+
+# median number of instances for positive motifs per peaks
+n_hits_per_peaks <- hits_per_peak %>% 
+  left_join(cluster_meta, by = c("Cluster" = "Cluster_ChromBPNet"))
+
+cor_frags <- lm(n_hits_per_peaks$median_pos_patterns ~ n_hits_per_peaks$total_frags)
+summary(cor_frags)
+
+cor_peaks <- lm(n_hits_per_peaks$median_pos_pattern ~ n_hits_per_peaks$n_peaks)
+summary(cor_peaks)
+
+p3 <- n_hits_per_peaks %>% 
+  ggplot(aes(x = log10(total_frags), y = median_pos_patterns)) +
+  geom_point(aes(fill = organ), shape = 21, size = 3, alpha = 0.7, color = "white") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  no_legend() +
+  square() +
+  annotate("text", label = glue("cor = {round(sqrt(summary(cor_frags)$r.squared), 3)}, \nR^2 = {round(summary(cor_frags)$r.squared, 3)}"),
+           x = 7.5, y = 7, size = 5) +
+  xlab("log10(Total fragments)") + ylab("median # positive hits per peak") +
+  ggtitle("median positive hits per peak vs. \n# fragments")
+
+p4 <- n_hits_per_peaks %>% 
+  ggplot(aes(x = n_peaks, y = median_pos_patterns)) +
+  geom_point(aes(fill = organ), shape = 21, size = 3, alpha = 0.7, color = "white") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) + 
+  scale_x_continuous(labels = scales::comma) +
+  no_legend() +
+  square() +
+  annotate("text", label = glue("cor = {round(sqrt(summary(cor_peaks)$r.squared), 3)}, \nR^2 = {round(summary(cor_peaks)$r.squared, 3)}"),
+           x = 70000, y = 7, size = 5) +
+  xlab("total number of peaks") + ylab("median # positive hits per peak") +
+  ggtitle("median positive hits per peak vs. \n# peaks")
+
+# calculate quartiles
+n_hits_per_peaks$n_peak_quartile <- ntile(n_hits_per_peaks$n_peaks, n=4)
+table(n_hits_per_peaks$n_peak_quartile)/sum(table(n_hits_per_peaks$n_peak_quartile))
+
+n_hits_per_peaks$total_frags_quartile <- ntile(n_hits_per_peaks$total_frags, n=4)
+table(n_hits_per_peaks$total_frags_quartile)/sum(table(n_hits_per_peaks$total_frags_quartile))
+
+p5 <- n_hits_per_peaks %>% 
+  ggplot(aes(x = total_frags_quartile, y = median_pos_patterns, group = total_frags_quartile)) +
+  geom_boxplot(fill = "gray90", outliers = FALSE) +
+  ggbeeswarm::geom_quasirandom(
+    aes(fill = organ), shape = 21, color = "white", size = 4, alpha = 0.6, width = 0.2) +
+  scale_fill_manual(values = cmap_organ) +
+  no_legend() +
+  ylab("Median # positive hits per peak") +
+  xlab("Quantile (total number of fragments)") +
+  ggtitle("median positive hits per peak vs. \n# fragments")
+
+p6 <- n_hits_per_peaks %>% 
+  ggplot(aes(x = n_peak_quartile, y = median_pos_patterns, group = n_peak_quartile)) +
+  geom_boxplot(fill = "gray90", outliers = FALSE) +
+  ggbeeswarm::geom_quasirandom(
+    aes(fill = organ), shape = 21, color = "white", size = 4, alpha = 0.6, width = 0.2) +
+  scale_fill_manual(values = cmap_organ) +
+  no_legend() +
+  ylab("Median # positive hits per peak") +
+  xlab("Quantile (total number of peaks)") +
+  ggtitle("median positive hits per peak vs. \n# peaks")
+
+plot_grid(p1, p3, p5, p2, p4, p6, align = "hv", axis = "rltb")
+
+```
+
+
+# Genomic localization
+
+## Nucleosome positioning
+
+First we need to aggregate the counts per bin over motif variants and cell types,
+per category:
+
+```{r aggregate_nuc_pos}
+
+# total counts
+motifs_keep <- hit_dyad_dist %>% 
+  filter(category %in% c("base", "base_with_flank")) %>% 
+  group_by(annotation_broad) %>% 
+  summarize(sum_all_counts = sum(n)) %>%
+  arrange(sum_all_counts) %>% 
+  filter(sum_all_counts > 50000) %>%
+  pull(annotation_broad)
+
+motifs_keep %>% length
+
+medians_dist_dyad <- hit_dyad_dist %>% 
+  filter(category %in% c("base", "base_with_flank") &
+           annotation_broad %in% motifs_keep) %>% 
+  group_by(annotation_broad, bin_dist) %>% 
+  summarize(sum_counts = sum(n)) %>% 
+  # we need to actually calculate the median given the binned counts
+  slice_max(order_by = sum_counts, n = 1) %>% 
+  arrange(bin_dist)
+
+# z-score
+hit_dyad_dist_summed <- hit_dyad_dist %>% 
+  filter(category %in% c("base", "base_with_flank") &
+           annotation_broad %in% motifs_keep) %>% 
+  group_by(annotation_broad, bin_dist) %>% 
+  summarize(sum_counts = sum(n)) %>% 
+  # zscore counts per motif (row-wise)
+  mutate(zscore = scale(sum_counts)) %>% 
+  mutate(annotation_broad = factor(annotation_broad, levels = unique(medians_dist_dyad$annotation_broad)),
+         bin_dist = as.numeric(bin_dist)) %>% 
+  ungroup()
+
+```
+
+```{r nuc_heatmap}
+
+p1 <- hit_dyad_dist_summed %>%
+  ggplot(aes(x = bin_dist, y = annotation_broad)) +
+  geom_tile(aes(fill = zscore)) +
+  scale_fill_gradientn(colours = rdbu2,
+                       # set midpoint to 0
+                       # https://github.com/tidyverse/ggplot2/issues/3738#issuecomment-1336166757
+                       rescaler = ~ scales::rescale_mid(.x, mid = 0), limits = c(-3, 4)) +
+  geom_vline(xintercept = 75, linewidth = 1) +
+  scale_x_continuous(breaks = seq(10, 250, by = 10)) +
+  theme(panel.border = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.text.y = element_text(size = 9)) +
+  xlab("binned distance from nucleosome dyad (bp)") +
+  ylab("motif") +
+  ggtitle("Motif instances distances to nucleosome dyad \n(aggregated within categories, across cell types)")
+
+```
+
+
+
+We can plot the heatmap w/ the actual counts on top so that we can manually inspect:
+
+```{r nucleosome_positioning_heatmap, fig.width = 14, fig.height = 8}
+
+hit_dyad_dist_summed %>%
+  ggplot(aes(x = bin_dist, y = annotation_broad)) +
+  geom_tile(aes(fill = zscore)) +
+  geom_text(aes(label = round(sum_counts, 2)), color = "black") +
+  scale_fill_gradientn(colours = rdbu2,
+                       # set midpoint to 0
+                       # https://github.com/tidyverse/ggplot2/issues/3738#issuecomment-1336166757
+                       rescaler = ~ scales::rescale_mid(.x, mid = 0)) +
+  geom_vline(xintercept = 75, linewidth = 1) +
+  scale_x_continuous(breaks = seq(10, 250, by = 10)) +
+  theme(panel.border = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.text.y = element_text(size = 9)) +
+  xlab("binned distance from nucleosome dyad (bp)") +
+  ylab("motif") +
+  ggtitle("Motif instances distances to nucleosome dyad \n(aggregated within categories, across cell types)")
+
+```
+
+
+
+## Distance to summits
+
+
+```{r peak_flank_heatmap}
+
+hit_summit_dist_summed <- hit_summit_dist %>% 
+  filter(category %in% c("base", "base_with_flank") &
+           annotation_broad %in% motifs_keep) %>% 
+  group_by(annotation_broad, bin_dist) %>% 
+  summarize(sum_counts = sum(n)) %>% 
+  filter(bin_dist <= 250) %>% 
+  # zscore counts per motif (row-wise)
+  mutate(zscore = scale(sum_counts)) %>% 
+  mutate(annotation_broad = factor(annotation_broad, levels = unique(medians_dist_dyad$annotation_broad)),
+         bin_dist = as.numeric(bin_dist)) %>% 
+  ungroup()
+
+hit_summit_dist_summed %>%
+  ggplot(aes(x = bin_dist, y = annotation_broad)) +
+  geom_tile(aes(fill = sum_counts)) +
+  scale_fill_viridis_c("plasma") +
+  scale_x_continuous(breaks = seq(0, 250, by = 10)) +
+  theme(panel.border = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.text.y = element_text(size = 9)) +
+  xlab("binned distance from peak summit (bp)") +
+  ylab("motif") +
+  ggtitle("Motif instances distances to peak summit \n(aggregated within categories, across cell types)")
+
+p2 <- hit_summit_dist_summed %>%
+  ggplot(aes(x = bin_dist, y = annotation_broad)) +
+  geom_tile(aes(fill = zscore)) +
+  scale_fill_gradientn(colours = rdbu2,
+                       # set midpoint to 0
+                       # https://github.com/tidyverse/ggplot2/issues/3738#issuecomment-1336166757
+                       rescaler = ~ scales::rescale_mid(.x, mid = 0), limits = c(-3, 4)) +
+  scale_x_continuous(breaks = seq(0, 250, by = 10)) +
+  theme(panel.border = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(size = 5),
+        axis.text.y = element_text(size = 9)) +
+  xlab("binned distance from peak summit (bp)") +
+  ylab("motif") +
+  ggtitle("Motif instances distances to peak summit \n(aggregated within categories, across cell types)")
+
+```
+
+
+```{r cdfs_peak_summits, fig.width = 5, fig.height = 6}
+
+hit_summit_dist_summed <- hit_summit_dist %>% 
+  filter(category %in% c("base", "base_with_flank") &
+           annotation_broad %in% motifs_keep) %>% 
+  group_by(annotation_broad, bin_dist, pattern_class) %>% 
+  summarize(sum_counts = sum(n))
+
+hit_summit_dist_summed %>%
+  filter(annotation_broad != "unresolved") %>% 
+  group_by(annotation_broad) %>%
+  mutate(cum_sum_counts = cumsum(sum_counts)) %>%
+  mutate(pattern_class = factor(pattern_class, levels = c("pos_patterns", "neg_patterns"))) %>% 
+  ggplot(aes(x = bin_dist, y = log10(cum_sum_counts), group = annotation_broad)) +
+  # geom_point(aes(fill = pattern_class), alpha = 0.4, color = "white", shape = 21) +
+  geom_line(aes(color = pattern_class), alpha = 0.4) + 
+  facet_wrap(~ pattern_class, ncol = 1) +
+  scale_color_manual(values = c("pos_patterns" = "#BD202E", "neg_patterns" = "#1D75BC")) +
+  scale_fill_manual(values = c("pos_patterns" = "#BD202E", "neg_patterns" = "#1D75BC")) +
+  theme(panel.grid.minor.x = element_line(color = "gray90"),
+        panel.grid.major.x = element_line(color = "gray90"),
+        strip.background.x = element_blank()) +
+  no_legend()
+
+```
+
+
+```{r barplot_peak_summits, fig.width = 11, fig.height = 5}
+
+hit_summit_dist_coarse <- hit_summit_dist %>% 
+  dplyr::select(Cluster, motif_name, annotation_broad, category, pattern_class, bin_dist, n_per_cluster_per_bin = n) %>% 
+  filter(category %in% c("base", "base_with_flank") &
+           annotation_broad %in% motifs_keep) %>% 
+  mutate(bin_dist_coarse = case_when(
+    bin_dist <= 50 ~ "0-50 bp",
+    bin_dist <= 100 ~ "51-100 bp",
+    bin_dist <= 150 ~ "101-150 bp",
+    bin_dist <= 200 ~ "151-200 bp",
+    bin_dist <= 250 ~ "201-250 bp",
+    TRUE ~ "> 251 bp"
+  )) %>% 
+  group_by(annotation_broad, pattern_class, bin_dist_coarse) %>% 
+  summarize(n_per_bin = sum(n_per_cluster_per_bin)) %>% 
+  mutate(n_total = sum(n_per_bin),
+         prop_ber_bin = n_per_bin / n_total)
+
+cmap_bins <- RColorBrewer::brewer.pal(6, "BuGn")
+names(cmap_bins) <- rev(c("0-50 bp", "51-100 bp", "101-150 bp", "151-200 bp", "201-250 bp", "> 251 bp"))
+
+motif_order_dist <- hit_summit_dist_coarse %>% filter(bin_dist_coarse == "0-50 bp") %>% arrange(desc(prop_ber_bin)) %>% pull(annotation_broad) %>% unique()
+
+hit_summit_dist_coarse %>% 
+  mutate(bin_dist_coarse = factor(bin_dist_coarse, levels = names(cmap_bins)),
+         annotation_broad = factor(annotation_broad, levels = motif_order_dist)) %>% 
+  ggplot(aes(x = annotation_broad, y = prop_ber_bin)) +
+  geom_bar(stat = "identity", aes(fill = bin_dist_coarse)) +
+  scale_fill_manual(values = cmap_bins) +
+  rotate_x()
+
+```
+
+
+
+Get proportions of motifs per bin:
+
+```{r}
+
+hit_summit_dist_coarse %>% 
+  mutate(bin_dist_coarse = factor(bin_dist_coarse, levels = rev(names(cmap_bins)))) %>% 
+  group_by(bin_dist_coarse) %>% 
+  summarize(n_per_bin_across_motifs = sum(n_per_bin)) %>% 
+  mutate(n_total = sum(n_per_bin_across_motifs),
+         prop = n_per_bin_across_motifs / n_total,
+         cum_n = cumsum(n_per_bin_across_motifs),
+         cum_prop = cum_n / n_total) %>% 
+  arrange(bin_dist_coarse)
+
+```
+
+
+
+
+## Feature type
+
+```{r heatmap_genomic_localization, fig.width = 15, fig.height = 8}
+
+region_type_summed <- hits_all_anno %>% 
+  filter(annotation_broad %in% motifs_keep) %>% 
+  dplyr::select(motif_name, annotation_broad, Distal, Exonic, Intronic, Promoter) %>% 
+  gather(region_type, count, 3:ncol(.)) %>% 
+  group_by(annotation_broad, region_type) %>% 
+  summarize(count_total = sum(count, na.rm = TRUE)) %>% 
+  mutate(annotation_broad = factor(annotation_broad, levels = unique(medians_dist_dyad$annotation_broad)))
+
+p3 <- region_type_summed %>% 
+  ggplot(aes(x = annotation_broad, y = count_total)) +
+  geom_col(aes(fill = region_type), position = "fill", alpha = 0.7) +
+  scale_fill_manual(values = cmap_peaktype2) +
+  coord_flip() +
+  theme(legend.position = "bottom")
+
+plot_grid(p1, p2 , p3, nrow = 1, align = "h", axis = "tb", rel_widths = c(2, 2, 1))
+
+```
+
+
+
+# Summary plots of discovered motifs
+
+Load known motifs from Vierstra input set:
+
+```{r}
+
+vierstra_motifs <- read_cwm_meme(file.path(kundaje_dir, "refs/Vierstra_motifs/all.dbs.meme"))
+
+```
+
+
+
+
+We want to describe motifs in a given subset. This plots:
+
+- The _de novo_ CWM (trimmed)
+- The PWM for the best matching known motif in the Vierstra input database
+- Total # of hits across cell types
+- Number of motif variants within a category
+- Breakdown of hits by compartment
+- Breakdown of hits by organ
+- Genomic annotations
+- Binned distances to nucleosomes
+
+
+## Base motifs, representative per broad anno
+
+```{r motif_summary_broad_base, fig.width = 24, fig.height = 14}
+
+base_broad <- motifs_compiled_unique %>% 
+  filter(category %in% c("base", "base_with_flank"))
+
+length(base_broad$annotation_broad %>% unique())
+
+plot_motif_summary(base_broad,
+                   hits_all_anno,
+                   hit_dyad_dist,
+                   order_by = "distToTSS",
+                   plot_known_motifs = TRUE,
+                   # manually indicate which motifs to reverse complement
+                   # to match known motif orientation
+                   to_revcomp = c("GATA", "CTCF", "RFX", "MEF2", "NFKB/RELA", "NR", "ONECUT",
+                                  "ZNF143", "NR:HNF4", "REST", "THRA/B", "HD:SIX/ZNF", "ZEB/SNAI", "YY1/2rep"))
+
+```
+
+
+
+## Homocomposites, representative motif per broad anno
+
+```{r motifs_broad_homocomposites, fig.width = 24, fig.height = 9}
+
+homocomp_broad <- motifs_compiled_unique %>%
+  filter(pattern_class == "pos_patterns" & category == "homocomposite")
+
+length(unique(homocomp_broad$annotation_broad))
+
+plot_motif_summary(homocomp_broad,
+                   hits_all_anno,
+                   hit_dyad_dist,
+                   plot_known_motifs = TRUE,
+                   rel_widths = c(3.5, 2, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
+                   to_revcomp = c("ETS_ETS", "IRF/STAT_IRF/STAT", "BZIP_BZIP", "HD:PITX/OTX_HD:PITX/OTX"))
+
+```
+
+
+## Heterocomposites, representative motif per broad anno
+
+Just showing the top 30 here, because there are many.
+
+```{r motifs_broad_heterocomposites, fig.width = 24, fig.height = 15}
+
+heterocomp_broad <- motifs_compiled_unique %>% 
+  filter(category == "heterocomposite" & !grepl("unresolved", annotation))
+
+heterocomp_broad %>% 
+  group_by(annotation_broad) %>% 
+  count() %>% 
+  arrange(desc(n))
+
+plot_motif_summary(heterocomp_broad,
+                   hits_all_anno,
+                   hit_dyad_dist,
+                   plot_known_motifs = FALSE,
+                   # known_motifs = jolma_motifs,
+                   # known_motif_col = "match0_jolma",
+                   # known_motif_name = "match0_jolma",
+                   rel_widths = c(3, 0.5, 1, 1, 1, 1, 1, 1.5, 1.5, 1),
+                   top_n = 30)
+
+```
+
+
+
+## Negative/reducing patterns, representative per broad anno
+
+```{r motif_summary_broad_neg, fig.width = 23, fig.height = 7}
+
+neg_patterns <- motifs_compiled_unique %>% 
+  filter(pattern_class == "neg_patterns") %>% 
+  filter(!(category == "unresolved"))
+
+# we can make use of the plotting function by setting the broad annotation to 
+# the granular one
+plot_motif_summary(neg_patterns %>% mutate(annotation_broad = motif_name),
+                   hits_all_anno %>% mutate(annotation_broad = motif_name),
+                   hit_dyad_dist %>% mutate(annotation_broad = motif_name),
+                   plot_known_motifs = TRUE,
+                   rel_widths = c(4, 2, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
+                   to_revcomp = c("456|ZEB/SNAI", "455|YY1/2repressive"))
+
+```
+
+
+
+## Unresolved motifs
+
+```{r motifs_unresolved, fig.width = 21, fig.height = 11}
+
+unresolved <- motifs_compiled_unique %>% 
+  filter(category == "unresolved") %>% 
+  arrange(desc(total_hits))
+
+plot_motif_summary(unresolved %>% mutate(annotation_broad = motif_name),
+                   hits_all_anno %>% mutate(annotation_broad = motif_name), 
+                   hit_dyad_dist %>% mutate(annotation_broad = motif_name),
+                   order_by = "distToTSS",
+                   plot_known_motifs = FALSE,
+                   rel_widths = c(3.5, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
+                   top_n = 30)
+
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

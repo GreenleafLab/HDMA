@@ -1,0 +1,1025 @@
+---
+title: "Global per-sample QC"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "02-global_analysis/01" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Global overview of the HDMA atlas, including QC stats and metadata at the
+tissue and sample levels.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(glue)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(scales)
+library(purrr)
+library(readr)
+library(tibble)
+library(stringr)
+library(Seurat)
+library(cowplot)
+library(data.table)
+library(ArchR)
+library(here)
+
+# shared project scripts/functions
+source(here::here("code/utils/plotting_config.R"))
+source(here::here("code/utils/matrix_helpers.R"))
+source(here::here("code/utils/seurat_helpers.R"))
+source(here::here("code/utils/sj_scRNAseq_helpers.R"))
+source(here::here("code/utils/hdma_palettes.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+# Extract metadata
+
+```{r}
+
+# TSV file to manually define which organs to keep
+organs_keep <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+organs_keep
+
+```
+
+Set some paths:
+
+```{r}
+
+preprocessing_out_dir <- here::here("output/01-preprocessing/02")
+meta_dir <- file.path(out, "per_cell_meta")
+dir.create(meta_dir, showWarnings = F, recursive = T)
+
+```
+
+
+Extract RNA metadata:
+
+```{r rna_meta}
+
+organs <- organs_keep$organ
+organ_codes <- organs_keep$organcode
+
+seurat_filepaths <- map(organs, ~ file.path(preprocessing_out_dir, .x, "rna_preprocess_output/RNA_obj_clustered_final.rds")) %>% 
+  set_names(organs)
+
+# check all files exist
+all(map_lgl(seurat_filepaths, file.exists))
+
+# create a TSV file for metadata from each organ 
+for (organ in organs) {
+  
+  filepath <- seurat_filepaths[[organ]]
+  # print(filepath)
+  
+  rna_meta_path <- file.path(meta_dir, paste0("/", organ, "_rna_meta.tsv"))
+  # print(rna_meta_path)
+  
+  # only process if the Seurat object exists, and the meta doesn't
+  if (file.exists(filepath) & !file.exists(rna_meta_path)) {
+    
+    message(paste0("Loading Seurat object for ", organ, "..."))
+    so <- readRDS(filepath)
+    so_meta <- so@meta.data
+    write_tsv(so_meta, rna_meta_path)
+    
+  } else message(organ, " meta already exists, skipping...")
+  
+}
+
+```
+
+
+Extract ATAC metadata
+
+```{r atac_meta}
+
+archr_filepaths <- map(organs, ~ file.path(preprocessing_out_dir, .x, "atac_preprocess_output/ATAC_obj_clustered_peaks_final")) %>% 
+  set_names(organs)
+
+# check all files exist
+all(map_lgl(archr_filepaths, file.exists))
+
+# Create a TSV file for metadata from each organ
+for (organ in organs) {
+  
+  filepath <- archr_filepaths[[organ]]
+  atac_meta_path <- file.path(meta_dir, paste0("/", organ, "_atac_meta.tsv"))
+  
+  # Only process if the Seurat object exists, and the meta doesn't
+  if (dir.exists(filepath) & !file.exists(atac_meta_path)) {
+    
+    message(paste0("Loading ArchRProject for ", organ, "..."))
+    archr <- loadArchRProject(archr_filepaths[[organ]])
+    archr_meta <- archr@cellColData %>% as.data.frame()
+    write_tsv(archr_meta, atac_meta_path)
+    
+  } else message(organ, " meta already exists, skipping...")
+  
+}
+
+```
+
+
+<!-- Gather Per Sample Metadata -->
+
+<!-- ```{r per_sample_meta} -->
+
+<!-- # initialize dataframe -->
+<!-- per_sample_meta <- data.frame(matrix(ncol = 7)) -->
+<!-- colnames(per_sample_meta) <- c("Sample", "Organ", "Sex", "PCD", "PCW", "medianUMI", "medianGene") -->
+
+<!-- for (organ in organs) { -->
+
+<!--   rna_filepath <- file.path(meta_dir, organ) -->
+<!--   rna_meta_path <- file.path(meta_dir, paste0("/", organ, "_rna_meta.tsv")) -->
+<!--   atac_meta_path <- file.path(meta_dir, paste0("/", organ, "_atac_meta.tsv")) -->
+
+<!--   # RNA metadata -->
+<!--   if (file.exists(rna_meta_path)) { -->
+<!--     message("reading rna metadata file for ", organ) -->
+
+<!--     # use fread b/c it's faster -->
+<!--     rna_meta <- data.table::fread(rna_meta_path, data.table = FALSE) -->
+
+<!--     # fixes an issue when there is only one sex in a sample -->
+<!--     if(rna_meta$sex %>% is.logical()) { -->
+<!--       rna_meta$sex <- replace(rna_meta$sex, rna_meta$sex  == FALSE, "F") -->
+<!--     } -->
+
+<!--     # grab relevant metadata -->
+<!--     rna_df <- rna_meta %>%  -->
+<!--       dplyr::group_by(Sample) %>% -->
+<!--       dplyr::summarise( -->
+<!--         Organ = as.character(unique(organ)), -->
+<!--         Sex = as.character(unique(sex)), -->
+<!--         PCD = as.numeric(gsub("[^0-9]", "", unique(PCD))), -->
+<!--         PCW = as.numeric(gsub("[^0-9]", "", unique(PCW))), -->
+<!--         medianUMI = median(nCount_RNA), -->
+<!--         medianGene = median(nFeature_RNA) -->
+<!--       ) -->
+
+<!--     # ATAC metadata -->
+<!--     if (file.exists(atac_meta_path)) { -->
+
+<!--       message("reading atac metadata file for ", organ) -->
+<!--       atac_meta <- data.table::fread(atac_meta_path, data.table = FALSE) -->
+<!--       atac_df <- atac_meta %>% -->
+<!--         dplyr::group_by(Sample) %>% -->
+<!--         dplyr::summarise( -->
+<!--           medianFrag = median(nFrags), -->
+<!--           medianTSS = median(TSSEnrichment) -->
+<!--         ) -->
+
+<!--       df <- left_join(rna_df, atac_df, by = "Sample") -->
+<!--       per_sample_meta <- bind_rows(as_tibble(per_sample_meta), df) -->
+
+<!--     }  -->
+<!--     else { -->
+
+<!--       message("no corresponding ATAC metadata available...") -->
+<!--       rna.df$medianFrag <- NA -->
+<!--       rna.df$medianTSS <- NA -->
+<!--       per_sample_meta <- bind_rows(as_tibble(per_sample_meta), rna_df) -->
+<!--     } -->
+<!--   } -->
+<!-- } -->
+
+<!-- # remove the first row from initializing matrix -->
+<!-- per_sample_meta <- per_sample_meta[-1,] -->
+
+<!-- write_tsv(per_sample_meta, glue("{out}/per_sample_meta.tsv")) -->
+
+<!-- ``` -->
+
+
+# Per organ QC and metadata
+
+
+```{r load_per_sample_meta}
+
+per_sample_meta <- map_dfr(organ_codes, function(organ){
+
+  filepath <- here::here(glue("output/01-preprocessing/02/shared/meta/{organ}_meta_sample.txt"))
+  print(filepath)
+  df <- read_tsv(filepath)
+  print(dim(df))
+  if(df$sex %>% is.logical()) {
+    df$sex <- replace(df$sex, df$sex  == FALSE, "F") # Specify character type when only female sex in sample
+  }
+  df
+
+})
+
+DT::datatable(per_sample_meta)
+
+write_tsv(per_sample_meta, glue("{out}/all_organs_keep_sample.tsv"))
+
+print(head(per_sample_meta))
+
+```
+
+
+
+Plot frequency of each organ:
+
+```{r pcw_dotplot, fig.width = 10, fig.hegiht = 5}
+
+# timeline dotplot
+per_sample_meta %>%
+  mutate(organ = factor(organ, levels = rev(sort(names(cmap_organ))))) %>%
+  ggplot(aes(x = pcw)) +
+  geom_dotplot(aes(fill = organ, color = sex),
+               binwidth = 0.1, binpositions = "all", stackgroups = TRUE, dotsize = 5, alpha = 0.8, width = 3, weight = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_color_manual(values = c("M" = "black", "F" = "white")) +
+  scale_x_continuous(breaks = seq(10, 23)) +
+  geom_hline(yintercept = 0) +
+  theme(panel.grid = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        panel.border = element_blank())
+
+
+```
+
+
+
+Count samples per organ:
+
+```{r barplot_freq_tissues, fig.width = 20, fig.height = 6}
+
+# Plot barplot for each sample
+p1 <- per_sample_meta %>%
+  group_by(organ) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = organ, y = n, fill = organ)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(x = "",
+       y = "# Samples") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_x_discrete(limits = rev) +
+  coord_flip() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    legend.position = "none"
+  )
+
+# plot number of cells for each organ:
+p2 <- per_sample_meta %>%
+  dplyr::group_by(organ) %>%
+  dplyr::summarise(
+    total_ncells = sum(ncell)) %>%
+  ggplot(aes(x = organ, y = total_ncells, fill = organ)) +
+  geom_bar(stat = "identity") +
+  theme_bw() +
+  labs(x = "",
+       y = "Count") +
+  scale_fill_manual(values = cmap_organ) +
+  scale_x_discrete(limits = rev) +
+  scale_y_continuous(trans = scales::log10_trans(),
+                     breaks = trans_breaks("log10", function(x) 10^x),
+                     labels = trans_format("log10", math_format(10^.x))) +
+  coord_flip() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+# Plot PCDs of each organ as a dotplot:
+p3 <- ggplot(per_sample_meta, aes(x = pcd, y = organ, color = organ, shape = factor(sex))) +
+  geom_point(size = 5, alpha = 0.8) +
+  theme_bw() +
+  labs(x = "Gestational age (days)",
+       y = "") +
+  scale_color_manual(values = cmap_organ) +
+  scale_shape_manual(values = c(19, 17)) +
+  scale_y_discrete(limits = rev) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "bottom"
+  )
+
+
+# Plot RNA metrics as a box whisker plot:
+p4 <- ggplot(per_sample_meta, aes(x = median_numi, y = organ, fill = organ)) +
+  geom_boxplot(alpha = 0.8) +
+  geom_jitter(height = 0.1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_x_log10() +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  labs(x = "median # UMIs",
+       y = "") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    legend.position = "none",
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank()
+  )
+
+p5 <- ggplot(per_sample_meta, aes(x = median_ngene, y = organ, fill = organ)) +
+  geom_boxplot(alpha = 0.8) +
+  geom_jitter(height = 0.1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_x_log10() +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  labs(x = "median # genes",
+       y = "") +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+# Plot ATAC metrics as a box whisker plot:
+p6 <- ggplot(per_sample_meta, aes(x = median_nfrags, y = organ, fill = organ)) +
+  geom_boxplot(alpha = 0.8) +
+  geom_jitter(height = 0.1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_x_log10() +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  labs(x = "median # fragments",
+       y = NULL) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+
+p7 <- ggplot(per_sample_meta, aes(x = median_tss, y = organ, fill = organ)) +
+  geom_boxplot(alpha = 0.8) +
+  geom_jitter(height = 0.1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  labs(x = "median TSS enrichment",
+       y = NULL) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+
+p8 <- ggplot(per_sample_meta, aes(x = median_frip, y = organ, fill = organ)) +
+  geom_boxplot(alpha = 0.8) +
+  geom_jitter(height = 0.1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_discrete(limits = rev) +
+  theme_bw() +
+  labs(x = "medianFRiP",
+       y = NULL) +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    legend.position = "none"
+  )
+
+plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, nrow = 1, align = "h", axis = "tb")
+
+# ggsave(paste0(figout, "/barplot_freq_tissues.pdf"), width=20, height=6)
+```
+
+Plot as 2D multiome metrics:
+
+```{r dotPlot_multiome, fig.width = 15, fig.height = 5}
+
+# nUMIs by nFrags
+p1 <- ggplot(per_sample_meta, aes(x = median_numi, y = median_nfrags, color = organ)) +
+  geom_point(size = 3, alpha = 0.9) +
+  scale_x_continuous(trans = log10_trans(),
+                     breaks = trans_breaks("log10", function(x) 10^x),
+                     labels = trans_format("log10", math_format(10^.x))) +
+  scale_y_continuous(trans = log10_trans(),
+                     breaks = trans_breaks("log10", function(x) 10^x),
+                     labels = trans_format("log10", math_format(10^.x))) +
+  scale_color_manual(values = cmap_organ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    aspect.ratio = 1
+    #legend.position = "none"
+  )
+
+# nGenes by FRiP
+p2 <- ggplot(per_sample_meta, aes(x = median_ngene, y = median_frip, color = organ)) +
+  geom_point(size = 3, alpha = 0.9) +
+  scale_x_continuous(trans = log10_trans(),
+                     breaks = trans_breaks("log10", function(x) 10^x),
+                     labels = trans_format("log10", math_format(10^.x))) +
+#  scale_y_continuous(trans = log10_trans(),
+#                     breaks = trans_breaks("log10", function(x) 10^x),
+#                     labels = trans_format("log10", math_format(10^.x))) +
+  scale_color_manual(values = cmap_organ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    aspect.ratio = 1
+    #legend.position = "none"
+  )
+
+# nGenes by TSS
+p3 <- ggplot(per_sample_meta, aes(x = median_ngene, y = median_tss, color = organ)) +
+  geom_point(size = 3, alpha = 0.9) +
+  scale_x_continuous(trans = log10_trans(),
+                     breaks = trans_breaks("log10", function(x) 10^x),
+                     labels = trans_format("log10", math_format(10^.x))) +
+  #  scale_y_continuous(trans = log10_trans(),
+  #                     breaks = trans_breaks("log10", function(x) 10^x),
+  #                     labels = trans_format("log10", math_format(10^.x))) +
+  scale_color_manual(values = cmap_organ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text = element_text(family = "sans", size = 10, color = "black"),
+    axis.title = element_text(family = "sans", size = 11, color = "black"),
+    aspect.ratio = 1
+    #legend.position = "none"
+  )
+
+plot_grid(p1, p2, p3, nrow = 1, align = "h", axis = "tb")
+
+# ggsave(paste0(figout, "/dotPlot_multiome.pdf"), width=15, height=5)
+
+```
+
+
+# Per sample QC and metadata
+
+Get cell metadata:
+
+```{r cell_meta_rna, eval = FALSE}
+
+# load all RNA cell meta into one table, add in the organ name
+cell_meta_rna_paths <- list.files(here::here("output/02-global_analysis/01/per_cell_meta"), pattern = "*_rna_meta.tsv", full.names = TRUE)
+cell_meta_rna <- map_dfr(cell_meta_rna_paths, ~ data.table::fread(.x, data.table = FALSE) %>%
+                           add_column(Organ = str_split(basename(.x), "_", n = 3)[[1]][1], .before = 1))
+
+# add organ code to cluster name
+cell_meta_rna$Cluster <- map2_chr(cell_meta_rna$Organ, cell_meta_rna$Clusters,
+                                  ~ paste0(organs_keep[organs_keep$organ == .x, ]$organcode, "_", .y))
+
+# get a sample order by organ/age
+sample_order <- cell_meta_rna %>%
+  distinct(Sample, Organ, PCW) %>%
+  arrange(Organ, PCW) %>%
+  pull(Sample)
+
+# n samples per organ
+cell_meta_rna %>%
+  distinct(Sample, Organ) %>%
+  group_by(Organ) %>%
+  dplyr::count()
+
+# n cells per organ
+cell_meta_rna %>%
+  group_by(Organ) %>%
+  dplyr::count()
+
+dim(cell_meta_rna)
+
+cell_meta_rna$Sample <- factor(cell_meta_rna$Sample, sample_order)
+
+```
+
+
+
+```{r cell_meta_atac, eval = FALSE}
+
+# get cell barcodes in the df
+# load all RNA cell meta into one table, add in the organ name
+cell_meta_atac_paths <- list.files(here::here("output/02-global_analysis/01/per_cell_meta"), pattern = "*_atac_meta.tsv", full.names = TRUE)
+cell_meta_atac <- map(cell_meta_atac_paths, ~ data.table::fread(.x, data.table = FALSE) %>%
+                            tibble::rownames_to_column(var = "Barcode"))
+
+cell_meta_atac <- map_dfr(cell_meta_atac, function(df) {
+
+  if ("Clusters" %in% colnames(df)) df %>% dplyr::rename(RNA_Clusters = Clusters) %>% mutate(RNA_Clusters = as.character(RNA_Clusters))
+  else df %>% mutate(RNA_Clusters = as.character(RNA_Clusters))
+
+})
+
+# get a cluster column matching RNA
+per_sample_meta$Sample <- per_sample_meta$sample
+cell_meta_atac <- cell_meta_atac %>%
+  left_join(per_sample_meta, by = c("Sample")) %>%
+  left_join(organs_keep, by = c("organ")) %>%
+  mutate(Cluster = as.numeric(gsub("c", "", RNA_Clusters))) %>%
+  mutate(Organ = organ) %>%
+  arrange(Organ, Cluster) %>%
+  mutate(Cluster = paste0(organ_code, "_", Cluster)) %>%
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster)))
+
+```
+
+
+Save metadata:
+
+```{r save_meta, eval = FALSE}
+
+save(cell_meta_atac, cell_meta_rna, file = glue("{out}/cell_meta_all.Rda"))
+
+```
+
+```{r}
+
+load(glue("{out}/cell_meta_all.Rda"))
+
+```
+
+
+Basic stats:
+
+```{r}
+
+# cells
+dim(cell_meta_rna)
+dim(cell_meta_atac)
+
+# samples
+unique(cell_meta_rna$Sample)
+
+```
+
+
+
+<!-- # Testing -->
+
+<!-- ```{r} -->
+
+<!-- cell_meta_rna %>%  -->
+<!--   filter(Organ == "Adrenal") %>%  -->
+<!--   ggplot(aes(x = Sample)) + -->
+<!--   geom_bar() -->
+
+<!-- cell_meta_rna %>%  -->
+<!--   filter(Organ == "Brain") %>%  -->
+<!--   ggplot(aes(x = Sample)) + -->
+<!--   geom_bar() -->
+
+<!-- filter_and_plot <- function(my_organ) { -->
+
+<!--   cell_meta_rna %>%  -->
+<!--     filter(Organ == my_organ) %>%  -->
+<!--     ggplot(aes(x = Sample)) + -->
+<!--     geom_bar() -->
+
+<!-- } -->
+
+
+<!-- ``` -->
+
+
+Let's generate a few plots for per-sample distributions of QC metrics:
+
+## RNA
+
+```{r n_cells_per_sample, fig.width = 13, fig.height = 5, cache = FALSE}
+
+cell_meta_rna %>%
+  group_by(Sample, Organ) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = Sample, y = n)) +
+  geom_col(aes(fill = Organ)) +
+  geom_text(aes(label = n), angle = 90, hjust = -0.2) +
+  ggtitle("Number of cells per sample") +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 30000)) +
+  hide_legend() +
+  rotate_x()
+
+# ggsave(paste0(figout, "n_cells_per_sample.pdf"), width = 13, height = 5)
+```
+
+```{r n_UMIs_RNA_per_sample, fig.width = 13, fig.height = 5, cache = FALSE}
+
+cell_meta_rna %>%
+  ggplot(aes(x = Sample, y = nCount_RNA)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of UMIs per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 20000)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_UMIs_per_sample.pdf"), width = 13, height = 5)
+```
+
+```{r n_genes_RNA_per_sample, fig.width = 13, fig.height = 5, cache = FALSE}
+
+cell_meta_rna %>%
+  ggplot(aes(x = Sample, y = nFeature_RNA)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of genes per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 7000)) +
+  scale_y_continuous(breaks = seq(0, 10000, by = 1000)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_genes_per_sample.pdf"), width = 13, height = 5)
+```
+
+
+## ATAC
+
+```{r TSS_enrichment_ATAC_per_sample, fig.width = 13, fig.height = 5, cache = FALSE}
+
+cell_meta_atac %>%
+  ggplot(aes(x = Sample, y = TSSEnrichment)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(5, 10, 15), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("TSS enrichment per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 25)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "TSS_enrichment_ATAC_per_sample.pdf"), width = 13, height = 5)
+
+```
+
+```{r n_fragments_ATAC_per_sample, fig.width = 13, fig.height = 5, cache = FALSE}
+
+cell_meta_atac %>%
+  ggplot(aes(x = Sample, y = nFrags)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(0, 2500, 5000, 7500), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of fragments per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 30000)) +
+  scale_y_continuous(breaks = seq(0, 30000, by = 2500)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_fragments_ATAC_per_sample.pdf"), width = 13, height = 5)
+```
+
+
+# Per cluster QC and metadata
+
+```{r breakdown_by_age_per_cluster, fig.width = 20, fig.height = 6, cache = FALSE}
+
+cell_meta_rna %>%
+  ggplot(aes(x = Cluster)) +
+  geom_bar(aes(fill = PCW), position = "fill") +
+  scale_fill_manual(values = cmap_pcw) +
+  ggtitle("PCW") +
+  rotate_x() +
+  ggtitle("Cluster breakdown by age") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  theme(legend.position = "bottom", panel.border = element_blank()) +
+  guides(fill = guide_legend(nrow = 1))
+
+# ggsave(paste0(figout, "breakdown_by_age_per_cluster.pdf"), width = 20, height = 6)
+```
+
+
+## RNA
+
+```{r n_cells_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+# get a cluster order
+cell_meta_rna <- cell_meta_rna %>%
+  arrange(Organ, Clusters) %>%
+  mutate(Cluster = factor(Cluster, levels = unique(.$Cluster)))
+
+cell_meta_rna %>%
+  group_by(Cluster, Organ) %>%
+  dplyr::count() %>%
+  ggplot(aes(x = Cluster, y = n)) +
+  geom_col(aes(fill = Organ)) +
+  geom_text(aes(label = n), angle = 90, hjust = -0.2) +
+  ggtitle("Number of cells per cluster") +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 30000)) +
+  hide_legend() +
+  rotate_x()
+
+# ggsave(paste0(figout, "n_cells_per_cluster.pdf"), width = 20, height = 5)
+```
+
+```{r n_UMIs_RNA_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+cell_meta_rna %>%
+  ggplot(aes(x = Cluster, y = nCount_RNA)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(2500, 5000, 7500), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of UMIs per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 25000)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_UMIs_RNA_per_cluster.pdf"), width = 20, height = 5)
+```
+
+```{r n_genes_RNA_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+cell_meta_rna %>%
+  ggplot(aes(x = Cluster, y = nFeature_RNA)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(1000, 2000, 3000), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of genes per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 7000)) +
+  scale_y_continuous(breaks = seq(0, 10000, by = 1000)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_genes_RNA_per_cluster.pdf"), width = 20, height = 5)
+```
+
+
+## ATAC
+
+```{r TSS_enrichment_ATAC_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+cell_meta_atac %>%
+  ggplot(aes(x = Cluster, y = TSSEnrichment)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(5, 10, 15), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("TSS enrichment per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 25)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "TSS_enrichment_ATAC_per_cluster.pdf"), width = 20, height = 5)
+```
+
+```{r n_fragments_ATAC_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+cell_meta_atac %>%
+  ggplot(aes(x = Cluster, y = nFrags)) +
+  geom_boxplot(aes(fill = Organ), outlier.shape = NA) +
+  geom_hline(yintercept = c(0, 2500, 5000, 7500), color = "red", linetype = 2) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Number of fragments per cell") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  coord_cartesian(ylim = c(0, 30000)) +
+  scale_y_continuous(breaks = seq(0, 30000, by = 2500)) +
+  hide_legend()
+
+# ggsave(paste0(figout, "n_fragments_ATAC_per_cluster.pdf"), width = 20, height = 5)
+```
+
+
+Total fragments per cluster:
+
+```{r total_n_fragments_ATAC_per_cluster, fig.width = 20, fig.height = 5, cache = FALSE}
+
+anno <- tibble::tribble(~Organ, ~y, ~Label,
+                        "Adrenal", log10(2500000),  "2.5M",
+                        "Adrenal", log10(5000000),  "5M",
+                        "Adrenal", log10(10000000), "10M")
+
+cell_meta_atac %>%
+  dplyr::group_by(Organ, Cluster) %>%
+  dplyr::summarize(Total_fragments = sum(nFrags)) %>%
+  ggplot(aes(x = Cluster, y = log10(Total_fragments))) +
+  geom_col(aes(fill = Organ)) +
+  # label 2.5M, 5M, and 10M fragments
+  geom_hline(yintercept = c(log10(10000000), log10(5000000), log10(2500000)), color = "red", linetype = 2) +
+  geom_text(data = anno, aes(x = 1, y = y, label = Label), hjust = -1) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  ggtitle("Log10 Total fragments per cluster") +
+  facet_grid(. ~ Organ, scales = "free_x", space = "free") +
+  hide_legend()
+
+# ggsave(paste0(figout, "total_n_fragments_ATAC_per_cluster.pdf"), width = 20, height = 5)
+```
+
+
+
+
+
+# Compare to published fetal atlases
+
+Collect metadata from Shendure Lab Fetal atlases:
+
+```{r}
+
+shendure_rna <- readr::read_csv(here::here("data/external/Domcke_Cao_metadata/ShendureLab_HumanFetal_RNA_Metadata.csv"))
+shendure_atac <- readr::read_csv(here::here("data/external/Domcke_Cao_metadata/ShendureLab_HumanFetal_ATAC_Metadata.csv"))
+
+# change case for ATAC metadata file to match
+str_sub(shendure_atac$Tissue, 1, 1) <- str_sub(shendure_atac$Tissue, 1, 1) %>% str_to_upper()
+
+shendure_rna$experiment <- "Cao et al."
+shendure_atac$experiment <- "Domcke et al."
+per_sample_meta$experiment <- "HDMA"
+
+palette_experiment <- c("HDMA" = "forestgreen", "Cao et al." = "gray70", "Domcke et al." = "gray70")
+
+# Filter organs
+# Convert Cerebrum to Brain
+shendure_rna$Organ[which(shendure_rna$Organ == "Cerebrum")] <- "Brain"
+shendure_atac$Tissue[which(shendure_atac$Tissue == "Cerebrum")] <- "Brain"
+
+# Convert Stomach to StomachEsophagus
+shendure_rna$Organ[which(shendure_rna$Organ == "Stomach")] <- "StomachEsophagus"
+shendure_atac$Tissue[which(shendure_atac$Tissue == "Stomach")] <- "StomachEsophagus"
+
+filt.shendure_rna <- shendure_rna %>% filter(Organ %in% organs)
+filt.shendure_atac <- shendure_atac %>% filter(Tissue %in% organs)
+
+rna.meta.toPlot <- bind_rows(data.frame(Organ = per_sample_meta$organ,
+                                        median_ngenes = per_sample_meta$median_ngene,
+                                        median_numis = per_sample_meta$median_numi,
+                                        experiment = per_sample_meta$experiment),
+                             data.frame(Organ = filt.shendure_rna$Organ,
+                                        median_ngenes = filt.shendure_rna$median_gene_count,
+                                        median_numis = filt.shendure_rna$median_mRNA_count,
+                                        experiment = filt.shendure_rna$experiment))
+
+atac.meta.toPlot <- bind_rows(data.frame(Organ = per_sample_meta$organ,
+                                         median_nfrags = per_sample_meta$median_nfrags,
+                                         median_tss = per_sample_meta$median_tss,
+                                         median_frip = per_sample_meta$median_frip,
+                                         experiment = per_sample_meta$experiment),
+                             data.frame(Organ = filt.shendure_atac$Tissue,
+                                        median_nfrags = filt.shendure_atac$Median_total_fragments,
+                                        median_tss = filt.shendure_atac$TSS_enrichment,
+                                        median_frip = filt.shendure_atac$Median_per_cell_FRiP,
+                                        experiment = filt.shendure_atac$experiment))
+
+```
+
+Plot QC comparisons:
+
+```{r BoxPlot_HDMA_vs_Cao_RNA, fig.width = 6, fig.heigth = 5}
+
+p1 <- ggplot(rna.meta.toPlot, aes(x = Organ, y = median_numis, fill = experiment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = palette_experiment, name = "Study") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(axis.text.x = element_blank()) +
+  xlab("") +
+  ylab("median # UMIs")
+
+p2 <- ggplot(rna.meta.toPlot, aes(x = Organ, y = median_ngenes, fill = experiment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = palette_experiment, name = "Study") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  xlab("") +
+  ylab("median # genes")
+
+plot_grid(p1, p2, ncol = 1, rel_heights = c(0.45, 0.55), align = "v", axis = "rl")
+
+# ggsave(paste0(figout, "BoxPlot_HDMA_vs_Cao_RNA.pdf"), width = 6, height = 5)
+```
+
+```{r boxPlot_HDMA_vs_Cao_ATAC, fig.width = 6, fig.height = 5}
+
+p1 <- ggplot(atac.meta.toPlot, aes(x = Organ, y = median_nfrags, fill = experiment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = palette_experiment, name = "Study") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(axis.text.x = element_blank()) +
+  xlab("") +
+  ylab("median # fragments")
+
+# p2 <- ggplot(atac.meta.toPlot, aes(x = Organ, y = median_frip, fill = experiment)) +
+#   geom_boxplot(outlier.shape = NA) +
+#   scale_fill_manual(values = palette_experiment, name = "Study") +
+#   scale_y_log10() +
+#   theme_bw() +
+#   theme(axis.text.x = element_blank()) +
+#   xlab("") +
+#   ylab("median FRiP")
+
+p3 <- ggplot(atac.meta.toPlot, aes(x = Organ, y = median_tss, fill = experiment)) +
+  geom_boxplot(outlier.shape = NA) +
+  scale_fill_manual(values = palette_experiment, name = "Study") +
+  scale_y_log10() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 45, hjust=1)) +
+  xlab("") +
+  ylab("median TSS enrichment")
+
+plot_grid(p1, p3, ncol = 1, rel_heights = c(0.44, 0.55), align = "v", axis = "rl")
+
+# ggsave(paste0(figout, "boxPlot_HDMA_vs_Cao_ATAC.pdf"), width = 6, height = 5)
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

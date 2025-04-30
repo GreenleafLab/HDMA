@@ -1,0 +1,320 @@
+---
+title: "ATAC co-accessibility analysis"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/04" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+# calculate the number of coaccessible peaks from global peak set
+
+```{r}
+suppressPackageStartupMessages({
+  library(ArchR)
+  library(tidyverse)
+  library(here)
+})
+
+# Get additional functions, etc.:
+scriptPath <- here("code/utils")
+source(paste0(scriptPath, "/plotting_config.R"))
+source(paste0(scriptPath, "/misc_helpers.R"))
+source(paste0(scriptPath, "/matrix_helpers.R"))
+source(paste0(scriptPath, "/archr_helpers.R"))
+source(paste0(scriptPath, "/hdma_palettes.R"))
+
+
+```
+
+## read project
+```{r}
+global_obj <- here("output/01-preprocessing/03/allSamples/")
+proj <- loadArchRProject(global_obj)
+proj
+```
+
+```{r}
+coacc <- getCoAccessibility(proj, returnLoops = F)
+peaks <- metadata(coacc)$peakSet
+head(coacc)
+head(peaks)
+```
+
+## convert peak ID to peak ranges
+```{r}
+coacc_tab <- table(coacc$queryHits) %>% as.data.frame %>% 
+  dplyr::rename(peakID=Var1, n_coaccessible_peaks=Freq)
+head(coacc_tab)
+peak_hits <- peaks[coacc_tab$peakID %>% as.character %>% as.integer,]
+head(peak_hits)
+```
+
+## adding peak names from ranges
+```{r}
+coacc_tab$peak_name <- paste0(seqnames(peak_hits), "_", ranges(peak_hits) %>% start, "_",ranges(peak_hits) %>% end)
+rownames(coacc_tab) <- coacc_tab$peak_name
+#coacc_tab$peakID  <- NULL 
+head(coacc_tab)
+```
+## load all global peaks and double check that all peaknames here are present in global peakset
+```{r}
+global <- readRDS(here::here("output/04-enhancers/01/peaks_all_df_annots.rds"))
+sum(rownames(coacc_tab) %in% rownames(global)) 
+sum(!rownames(coacc_tab) %in% rownames(global)) 
+```
+
+## save output
+```{r}
+saveRDS(coacc_tab, paste0(out, "/n_coacc_peaks_df.rds"))
+```
+
+## read output
+```{r}
+coacc_tab <- readRDS(paste0(out, "/n_coacc_peaks_df.rds"))
+```
+
+## some summary stats and plots
+### distribution of n_coaccessible_peaks
+```{r jplot_ncoacc_peak, fig.width=5, fig.height=5}
+quantile(coacc_tab$n_coaccessible_peaks)
+quantile(coacc_tab$n_coaccessible_peaks, seq(0, 1, by = 0.1))
+coacc_tab_sorted <- coacc_tab %>% dplyr::arrange(n_coaccessible_peaks)
+coacc_tab_sorted$rank <- 1:dim(coacc_tab_sorted)[1]
+head(coacc_tab_sorted)
+
+p <- ggplot(coacc_tab_sorted, aes(x=rank, y=n_coaccessible_peaks)) + geom_point() + theme_BOR() 
+h <- 10
+p1 <- p + geom_hline(yintercept=h, col="red", linetype="dashed") +
+  geom_text(aes(0,h),label = paste0("y=",h), vjust = -1, col="red")
+
+h <- 20
+p2 <- p + geom_hline(yintercept=h, col="red", linetype="dashed") +
+  geom_text(aes(0,h),label = paste0("y=",h), vjust = -1, col="red")
+
+h <- 15
+p3 <- p + geom_hline(yintercept=h, col="red", linetype="dashed") +
+  geom_text(aes(0,h),label = paste0("y=",h), vjust = -1, col="red")
+
+
+# pdf(paste0(figout, "/jplot_ncoacc_peak.pdf"), width=5, height=5)
+p1  
+p2
+p3
+# dev.off()
+```
+
+### distribution of n_coaccessible_peaks > 1
+```{r}
+npeaks <- coacc_tab$n_coaccessible_peaks
+length(npeaks)
+length(npeaks[npeaks > 1])
+quantile(npeaks[npeaks > 1])
+```
+### inspect peak types in top coaccessible peaks
+```{r peaktype_topaccpeaks}
+coacc_cutoff <- 15
+#coacc_top <- coacc_tab %>% dplyr::filter(n_coaccessible_peaks > quantile(coacc_tab$n_coaccessible_peaks, 0.9))
+coacc_top <- coacc_tab %>% dplyr::filter(n_coaccessible_peaks > coacc_cutoff)
+coacc_top <- merge(coacc_top, global, by.x=0, by.y=0) %>% column_to_rownames(var="Row.names")
+
+ggplot(coacc_top,aes(x=peakType, fill=peakType)) + geom_bar()  + 
+    scale_fill_manual(values = c("#75B76C", "#8DBFE6", "#5B328C", "#F5C768")) + theme_BOR()
+
+```
+### also inspect peak types in the targets of top coaccessible peaks
+```{r peaktype_topaccpeaks_targets}
+peak_hits <- peaks[coacc$queryHits,]
+coacc$peak_name <- paste0(seqnames(peak_hits), "_", ranges(peak_hits) %>% start, "_",ranges(peak_hits) %>% end)
+
+# filter coacc links for top coaccessible peaks
+coacc_toplinks <- coacc[coacc$peak_name %in% rownames(coacc_top),]
+target_peaks <- peaks[coacc_toplinks$subjectHits,]
+coacc_toplinks$subject_peak_name <- paste0(seqnames(target_peaks), "_", ranges(target_peaks) %>% start, "_",ranges(target_peaks) %>% end)
+rownames(coacc_toplinks) <- coacc_toplinks$subject_peak_name
+coacc_toplinks <- coacc_toplinks %>% as.data.frame
+coacc_toplinks$subject_peak_type <- global[coacc_toplinks$subject_peak_name, "peakType"]
+
+ggplot(coacc_toplinks,aes(x=subject_peak_type, fill=subject_peak_type)) + geom_bar()  + 
+    scale_fill_manual(values = c("#75B76C", "#8DBFE6", "#5B328C", "#F5C768")) + theme_BOR()
+
+ggplot(global,aes(x=peakType, fill=peakType)) + geom_bar()  + 
+    scale_fill_manual(values = c("#75B76C", "#8DBFE6", "#5B328C", "#F5C768")) + theme_BOR()
+
+```
+
+### organ origin of the top peaks with most number of coaccessible peaks
+```{r boxplot_topaccpeak_origin, fig.width=10, fig.height=6}
+organ_stats <- sapply(coacc_top$GroupReplicate, function(n){strsplit(n, split="_")[[1]][1]}) %>% 
+  table %>% as.data.frame %>% dplyr::rename(code=".", n_peaks_top10_coaccessible="Freq")
+
+organ_allpeak_stats <- sapply(global$GroupReplicate, function(n){strsplit(n, split="_")[[1]][1]}) %>% 
+  table %>% as.data.frame %>% dplyr::rename(code=".", n_peaks_total="Freq")
+
+organ_stats <- merge(organ_stats, organ_allpeak_stats)
+organ_stats$ratio_top10_accessible <- organ_stats$n_peaks_top10_coaccessible / organ_stats$n_peaks_total
+head(organ_stats)
+
+# convert organ code to organ name for color palettes
+toKeep <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv")) %>% as.data.frame
+rownames(toKeep) <- toKeep$organcode
+organ_stats$organ_name <- toKeep[organ_stats$code, "organ"]
+organ_stats$color <- cmap_organ[organ_stats$organ_name]
+head(organ_stats)
+
+# pdf(paste0(figout,"/boxplot_n_coacc_peak_organ.pdf"), width=10, height=6)
+ggplot(organ_stats, aes(x=organ_name, y=n_peaks_total, fill=organ_name)) + geom_col() + theme_BOR() + scale_fill_manual(values = organ_stats$color) + theme(axis.text.x = element_text(angle=90, hjust = 1)) + 
+  ylab("total # of global peaks \noriginating from organ")
+ggplot(organ_stats, aes(x=organ_name, y=n_peaks_top10_coaccessible, fill=organ_name)) + geom_col() + theme_BOR() + scale_fill_manual(values = organ_stats$color) + theme(axis.text.x = element_text(angle=90, hjust = 1)) + ylab("# of organ-originated peaks \nin highly coaccessible peaks")
+
+ggplot(organ_stats, aes(x=organ_name, y=ratio_top10_accessible*100, fill=organ_name)) + geom_col() + theme_BOR() + scale_fill_manual(values = organ_stats$color) + theme(axis.text.x = element_text(angle=90, hjust = 1)) + ylab("% of organ-originated peaks \nin highly coaccessible peaks")
+
+# dev.off()
+```
+
+### plot tracks for top genes near the peaks with the highest number of coaccesible peaks 
+```{r tracks_highly_coacc_genes_n15, fig.width=5, fig.height=5, eval=F}
+# hcag = highly co-accessible gene
+hcag <- coacc_top %>% arrange(desc(n_coaccessible_peaks)) %>% dplyr::select(nearestGene) %>% table %>% sort(decreasing=T) %>% head(30)
+
+proj$organ_code <- sapply(proj$RNA_Clusters, function(n){strsplit(n, split="_")[[1]][1]})
+
+p <- plotBrowserTrack(
+  ArchRProj = proj, 
+  groupBy = "organ_code", 
+  geneSymbol = hcag %>% names, 
+  upstream = 100000,
+  downstream = 100000,
+  loops = getCoAccessibility(proj)
+)
+
+saveRDS(hcag, paste0(out,"/highly-coaccessible-genes.rds"))
+
+# plotPDF(plotList = p,
+#         name = "plot_tracks_highly_coaccessible_genes_n15.pdf",
+#         ArchRProj = proj,
+#         addDOC = FALSE, width = 5, height = 5)
+p
+
+```
+
+### get all cluster annotations
+
+```{r get_annot}
+# add organ colors
+col.data.frame <- data.frame(Color=cmap_organ) %>% dplyr::mutate(organ=names(cmap_organ))
+
+organ.code.list <- toKeep$organcode
+all.annots <- lapply(1:length(organ.code.list), function(i){
+  # read cluster id annotation
+  annot <- read.csv(sprintf(here("output/01-preprocessing/02/shared/meta/%s_meta_cluster.txt"), organ.code.list[i]), sep="\t") %>% as.data.frame
+  rownames(annot) <- annot$cb
+  annot$L0_clusterID <- paste0(organ.code.list[i],"_",annot$L1_clusterID)
+  annot$L3_clusterID <- paste0(organ.code.list[i],"_",annot$L3_clusterName)
+  return(annot)
+})
+all.annots <- dplyr::bind_rows(all.annots)
+rownames(all.annots) <- all.annots$L0_clusterID
+
+all.annots <- all.annots %>%
+  mutate(Cluster = paste0(organ_code, "_",L1_clusterID)) %>%
+  mutate(Cluster_labelled = paste0(organ_code, "_", L1_clusterID, "_", L3_clusterName)) %>%
+  left_join(col.data.frame) %>%
+  tibble::column_to_rownames(var = "Cluster")
+dim(all.annots)
+head(all.annots)
+```
+
+
+### plot tracks for top genes by cell type, subset to the organ of interest
+```{r tracks_top_coaccgene, fig.width=10, fig.height=6, eval=F}
+proj$organ_code <- sapply(proj$RNA_Clusters, function(n){strsplit(n, split="_")[[1]][1]})
+proj$cell_type <- all.annots[proj$RNA_Clusters, "L3_clusterName"]
+
+plot_track_goi <- function(organ_code, gene, proj){
+  p <- plotBrowserTrack(
+  ArchRProj = proj[proj$organ_code==organ_code], 
+  groupBy = "cell_type", 
+  geneSymbol = gene, 
+  upstream = 100000,
+  downstream = 100000,
+  loops = getCoAccessibility(proj)
+  )
+
+  # pdf(file.path(out, sprintf("%s/plot-browser-track-%s-%s.pdf", figout, organ_code, gene)), height=6, width=6)
+  plot(p[[gene]])
+  # dev.off()
+}
+
+
+plot_track_goi("EY", "OTX2", proj)
+
+plot_track_goi("HT", "NKX2-5", proj)
+plot_track_goi("SP", "NKX2-5", proj)
+
+plot_track_goi("HT", "GATA4", proj)
+
+plot_track_goi("HT", "GATA6", proj)
+plot_track_goi("AG", "GATA6", proj)
+
+plot_track_goi("LI", "APOB", proj)
+
+plot_track_goi("MU", "MYH3", proj)
+plot_track_goi("TR", "MYH3", proj)
+
+plot_track_goi("TM", "IKZF1", proj)
+plot_track_goi("LI", "IKZF1", proj)
+
+plot_track_goi("TM", "CD8A", proj)
+
+
+```
+

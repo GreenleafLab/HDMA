@@ -1,0 +1,1220 @@
+---
+title: "Overlap VISTA enhancer database with HDMA global peakset"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/09" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+script_path <- here::here("code/utils/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+We received the VISTA-validated enhancer set from collaborators. Here we explore the
+data to guide our handling of the dataset for training/testing validation.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(cowplot)
+library(GenomicRanges)
+library(rtracklayer)
+library(ArchR)
+library(ComplexHeatmap)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(Seurat)
+library(BPCells)
+library(ggseqlogo)
+
+# shared project scripts/functions
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "trackplots.R"))
+source(file.path(script_path, "track_helpers_BL.R"))
+source(file.path(script_path, "track_helpers_SJ.R"))
+
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+# Load data
+
+```{r load_vista}
+
+vista <- read_tsv(here::here("data/external/2024-01-24_vista_@mkosicki/2024-01-24_vista.clean.tsv"))
+#tibble::glimpse(vista)
+
+unique(vista$assembly)
+sum(is.na(vista$vista_id))
+
+length(unique(vista$vista_id))
+length(unique(vista$coord))
+```
+## Filter for only entries that have a hg38 coordinate
+These also contain enhancers whose vista_id start with "mm" and use a "mm10" assembly, but mapped to an hg38 ortholog 
+```{r}
+vista <- vista[!is.na(vista$coordinate_hg38),]
+vista
+```
+
+## Distribution of vista enhancer widths
+```{r vista_enhancer_width_distr, fig.width=6, fig.height=4}
+med_width <- median(width(GRanges(vista$coordinate_hg38)))
+ggpubr::gghistogram(width(GRanges(vista$coordinate_hg38))) + xlab("vista enhancer width in bp") + geom_vline(xintercept=med_width, linetype="dashed", color="red") + 
+  annotate("text", x=med_width, hjust=-0.1, y=800, label=paste0("median: ", med_width, "bp"), color="red")
+```
+
+
+# Load global peaks
+also tried increasing minoverlap to 200bp for findOverlaps and still get around 85% of vista enhancers in global peakset
+```{r vista_hdma_npeak_overlap, fig.width=6, fig.height=4}
+global_peaks <- readRDS(here::here("output/04-enhancers/01/peaks_all_df.rds"))
+overlap <- findOverlaps(GRanges(global_peaks), GRanges(vista$coordinate_hg38) %>% unique) 
+
+sprintf("From the vista enhancer dataset (hg38 only), %d of %d (%.2f%%) enhancers overlap with the hdma global peakset", overlap@to %>% unique %>% length, vista$vista_id %>% unique %>% length, overlap@to %>% unique %>% length/(vista$vista_id %>% unique %>% length) *100)
+
+sprintf("From the hdma global peakset, %d of %d (%.2f%%) peaks overlap with vista enhancers", overlap@from %>% unique %>% length, dim(global_peaks)[1], overlap@from %>% unique %>% length/dim(global_peaks)[1]*100)
+
+plotdf <- data.frame(vista_idx=seq_along(GRanges(vista$coordinate_hg38) %>% unique), n_hdma_peak_overlap=0)
+tmp <- overlap@to %>% table %>% as.data.frame(stringsAsFactors=F) %>% dplyr::rename(n_hdma_peak_overlap="Freq", vista_idx=".")
+plotdf[tmp$vista_idx, "n_hdma_peak_overlap"] <- tmp$n_hdma_peak_overlap
+
+med <- median(tmp$n_hdma_peak_overlap)
+ggplot(plotdf, aes(x=n_hdma_peak_overlap)) + geom_bar() + theme_BOR() + geom_vline(xintercept = med, linetype="dashed", color="red") + 
+  annotate("text", x=med, y=600, hjust=-0.5, label=paste0("median: ", med), color="red") + ylab("n_vista_enhancers")
+
+
+
+```
+
+
+```{r read_vista}
+vista_long <- read.csv(here::here("output/04-enhancers/08/vista_long_with_atlas_tissues.tsv"), sep="\t")
+vista_long$vista_id %>% unique %>% length
+
+pos <- vista_long[vista_long$HDMA_tissue %in% c("Brain", "Eye", "Heart", "Skin", "Liver"),]
+pos_coord <- vista[vista$vista_id %in% pos$vista_id, ]$coordinate_hg38 %>% GRanges
+
+overlap <- findOverlaps(GRanges(global_peaks), pos_coord %>% unique) 
+
+sprintf("From the vista enhancer dataset (hg38 only) positive for Brain/Eye/Heart/Skin/Liver, %d of %d (%.2f%%) enhancers overlap with the hdma global peakset", overlap@to %>% unique %>% length, pos$vista_id %>% unique %>% length, overlap@to %>% unique %>% length/(pos$vista_id %>% unique %>% length) *100)
+sprintf("From the hdma global peakset, %d of %d (%.2f%%) peaks overlap with vista enhancers", overlap@from %>% unique %>% length, dim(global_peaks)[1], overlap@from %>% unique %>% length/dim(global_peaks)[1]*100)
+
+
+sprintf("%d of %d vista enhancers are positive for Brain/Eye/Heart/Skin/Liver", pos_coord %>% unique %>% length, vista_long$vista_id %>% unique %>% length)
+
+```
+
+## Peak type
+```{r vista_peak_type, fig.width=4, fig.height=6}
+library(ArchR)
+library(BSgenome.Hsapiens.UCSC.hg38)
+addArchRGenome("hg38")
+geneAnnot <- getArchRGenome(geneAnnotation = T, genomeAnnotation = F) %>% as.list
+
+peaks <- GRanges(vista$coordinate_hg38) %>% unique
+peaks_anno <- ArchR:::.fastAnnoPeaks(peaks, BSgenome = BSgenome.Hsapiens.UCSC.hg38, geneAnnotation = geneAnnot)
+
+
+ggplot(peaks_anno %>% as.data.frame, aes(x=1, fill=peakType)) + geom_bar() + theme_BOR()
+ggplot(peaks_anno %>% as.data.frame, aes(x=1, fill=peakType)) + geom_bar(position="fill") + theme_BOR()
+
+
+```
+# Heatmap of VISTA enhancer frag counts 
+```{r, eval=F}
+proj <- loadArchRProject(here::here("output/01-preprocessing/03/allSamples_decontx"))
+
+proj <- addFeatureMatrix(
+  input = proj,
+  features = GRanges(vista$coordinate_hg38) %>% unique,
+  matrixName = "VistaPeakMatrix"
+)
+
+proj <- saveArchRProject(proj)
+```
+## Get all annotations
+
+```{r get_annot}
+tissue_meta <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+
+
+# add organ colors
+col.data.frame <- data.frame(Color=cmap_organ) %>% dplyr::mutate(organ=names(cmap_organ))
+
+organ.code.list <- tissue_meta$organcode
+all.annots <- lapply(1:length(organ.code.list), function(i){
+  # read cluster id annotation
+  annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta_cluster.txt"), organ.code.list[i]), sep="\t") %>% as.data.frame
+  rownames(annot) <- annot$cb
+  annot$L0_clusterID <- paste0(organ.code.list[i],"_",annot$L1_clusterID)
+  annot$L3_clusterID <- paste0(organ.code.list[i],"_",annot$L3_clusterName)
+  return(annot)
+})
+all.annots <- dplyr::bind_rows(all.annots)
+rownames(all.annots) <- all.annots$L0_clusterID
+
+all.annots <- all.annots %>%
+  mutate(Cluster = paste0(organ_code, "_",L1_clusterID)) %>%
+  mutate(Cluster_labelled = paste0(organ_code, "_", L1_clusterID, "_", L3_clusterName)) %>%
+  left_join(col.data.frame) %>%
+  tibble::column_to_rownames(var = "Cluster")
+head(all.annots)
+
+
+# add average cluster age
+
+meta <- read_tsv(Sys.glob(here::here("output/01-preprocessing/02/shared/meta/*_meta.txt"))) %>% as.data.frame(stringsAsFactors=F)
+smeta <- read_tsv(Sys.glob(here::here("output/01-preprocessing/02/shared/meta/*_meta_sample.txt"))) %>% as.data.frame(stringsAsFactors=F)
+cmeta <- read_tsv(Sys.glob(here::here("output/01-preprocessing/02/shared/meta/*_meta_cluster.txt"))) %>% as.data.frame(stringsAsFactors=F)
+rownames(smeta) <- smeta$sample
+
+meta$sample <- lapply(meta$cb, function(n){strsplit(n, split="#")[[1]][1]}) %>% unlist
+meta$PCW <- smeta[meta$sample, "pcw"]
+meta$PCD <- smeta[meta$sample, "pcd"]
+
+meta_group <- meta %>% group_by(L2_clusterID) %>% dplyr::summarise(avg_pcw=mean(PCW), avg_pcd=mean(PCD)) %>% as.data.frame(stringsAsFactors=F)
+all.annots <- merge(all.annots, meta_group, by="L2_clusterID", all.x=T) %>% merge(cmeta, all.x=T)
+head(all.annots)
+```
+
+## Pseudobulk vista peak matrix 
+per cluster
+```{r, eval=F}
+addArchRThreads(4)
+proj$RNA_Clusters_Labelled <- all.annots[proj$RNA_Clusters, "Cluster_labelled"]
+vista_peak_matrix <- getMatrixFromProject(proj, useMatrix = "VistaPeakMatrix")
+saveRDS(vista_peak_matrix, paste0(out, "/vista_peak_matrix_cell.rds"))
+
+tmp <- vista_peak_matrix@assays@data$VistaPeakMatrix %>% t %>% as.matrix %>% as.data.frame %>% group_by(vista_peak_matrix$RNA_Clusters_Labelled) %>% dplyr::summarise(across(everything(), list(median=median, sum=sum, mean=mean)))
+saveRDS(tmp, paste0(out, "/vista_peak_matrix_clust.rds"))
+
+```
+
+add peak annotations
+```{r, eval=F}
+vista_peak_matrix <- readRDS(paste0(out, "/vista_peak_matrix_cell.rds"))
+peaks <- vista_peak_matrix@rowRanges
+
+# add enh name to peaks
+vista_gr <- GRanges(vista$coordinate_hg38)
+mcols(vista_gr) <- vista
+vista_gr <- vista_gr %>% unique
+overlap <- findOverlaps(peaks, vista_gr, type="equal")
+peaks$vista_id <- NA
+peaks[overlap@from]$vista_id <- vista_gr[overlap@to]$vista_id
+
+# add vista organ positive info
+for (organ in c("Brain", "Heart", "Eye", "Liver", "Skin")){
+  pos_peaks <- vista[vista$vista_id %in% vista_long[vista_long$HDMA_tissue==organ, "vista_id"],]$coordinate_hg38 %>% GRanges
+  mcols(peaks)[paste0("vista_pos_", organ)] <- rep("neg", length(peaks))
+  mcols(peaks)[peaks$vista_id %in% vista_long[vista_long$HDMA_tissue==organ, "vista_id"], paste0("vista_pos_", organ)] <- "pos"
+}
+
+vista_peak_matrix@rowRanges <- peaks 
+
+saveRDS(vista_peak_matrix, paste0(out, "/vista_peak_matrix_cell.rds"))
+```
+
+
+## Overlap with global peaks
+```{r, eval=F}
+## cannot get peak matrix at once because it's too large, submit as job
+#system("sbatch -p wjg,sfgf,biochem --mem-per-cpu=250g --time=48:00:00 --job-name=peakmtx --wrap \"Rscript 09-get_peak_matrix.R\"")
+
+peak_matrix <- readRDS(paste0(out, "/peak_matrix_cell_overlapvista.rds")) # output from 09-get_peak_matrix.R
+vista_peak_matrix <- readRDS(paste0(out, "/vista_peak_matrix_cell.rds"))
+
+# overlap vista peaks with global peaks, min 75%=375bp overlap
+#   if overlapping multiple global peaks, use ATAC signal from the peak with the highest total ATAC signal
+overlaps <- findOverlaps(peak_matrix@rowRanges, vista_peak_matrix@rowRanges, minoverlap=375)
+vista_withoverlap <- overlaps@to %>% unique
+
+maxmat <- list()
+hdma_peaks <- c()
+
+peak_matrix_data <- peak_matrix@assays@data$PeakMatrix
+for (i in vista_withoverlap){
+  if (mod(i, 50)==0){
+    message(i)
+  }
+  cand_id <- overlaps@from[which(overlaps@to==i)]
+  cand <- peak_matrix_data[cand_id,,drop=F]
+  maxid <- rev(order(rowSums(cand)))[1]
+  maxmat[[i]] <- cand[maxid,] %>% unname
+  hdma_peaks <- c(hdma_peaks, cand_id[maxid])
+}
+
+stopifnot(sum(lengths(maxmat)!=0)==length(hdma_peaks))
+maxmat <- maxmat[lengths(maxmat)!=0]
+
+maxmat <- do.call(rbind, maxmat)
+hdma_peaks <- peak_matrix@rowRanges[hdma_peaks]
+
+vista_peak_matrix_max <- vista_peak_matrix
+vista_peak_matrix_max <- vista_peak_matrix_max[vista_withoverlap,]
+vista_peak_matrix_max@assays@data$VistaPeakMatrix <- Matrix(maxmat, sparse=T)
+mcols(hdma_peaks) <- cbind(mcols(hdma_peaks), mcols(rowRanges(vista_peak_matrix_max))[,2:7])
+
+rowRanges(vista_peak_matrix_max) <- hdma_peaks
+  
+saveRDS(vista_peak_matrix_max, paste0(out, "/peak_matrix_cell_overlapvista_maxpeak.rds"))
+
+tmp <- vista_peak_matrix_max@assays@data$VistaPeakMatrix %>% t %>% as.matrix %>% as.data.frame %>% group_by(vista_peak_matrix_max$RNA_Clusters_Labelled) %>% dplyr::summarise(across(everything(), list(median=median, sum=sum, mean=mean)))
+saveRDS(tmp, paste0(out, "/peak_matrix_cell_overlapvista_maxpeak_clust.rds"))
+
+```
+
+Read overlap data
+```{r}
+vista_peak_matrix <- readRDS(paste0(out, "/peak_matrix_cell_overlapvista_maxpeak.rds"))
+tmp <- readRDS(paste0(out, "/peak_matrix_cell_overlapvista_maxpeak_clust.rds"))
+
+# annotations
+rownames(all.annots) <- all.annots$Cluster_labelled
+all.annots.sorted <- all.annots[tmp[[grep("vista_peak", colnames(tmp), value=T)]], ]
+
+
+```
+
+## ATAC heatmap
+Filter to vista enhancers positive in at least 1 hdma tissue
+```{r, eval=F}
+df <- tmp[,grepl("sum", colnames(tmp))]
+peaks <- vista_peak_matrix@rowRanges
+
+idx_pf <- which((peaks$vista_pos_Brain=="pos") | (peaks$vista_pos_Heart=="pos") | (peaks$vista_pos_Eye=="pos") | 
+        (peaks$vista_pos_Liver=="pos") | (peaks$vista_pos_Skin=="pos"))
+
+# different normalizations
+df <- df[, idx_pf]
+peaks <- peaks[idx_pf,]
+df_lognorm_sub <- (df/rowSums(df)) * 1e6 %>% log1p
+df_lognorm_0to1_sub <- as.data.frame(lapply(df_lognorm_sub, scales::rescale))
+
+ha <- columnAnnotation(organ=all.annots.sorted$organ, compartment=all.annots.sorted$L0_clusterName,
+                       col=list(compartment=cmap_compartment,
+                                organ=cmap_organ))
+
+rowannot_ls <- list()
+col_ls <- list()
+for (organ in c("Heart", "Brain", "Eye", "Liver", "Skin")){
+  rowannot_ls[paste0("vista_pos_", organ)] <- mcols(peaks)[paste0("vista_pos_", organ)]
+  col_ls[[paste0("vista_pos_", organ)]] <- c(neg="gray", pos=cmap_organ[[organ]])
+}
+
+# order the rows and cols
+ha2 <- HeatmapAnnotation(df=do.call(cbind, rowannot_ls %>% unname), col = col_ls, which="row")
+
+# Calculate breaks based on quantiles to handle outliers
+cmap <- cmaps_BOR$whitePurple
+dfnorm <- df_lognorm_0to1_sub
+plot_title <- "Normalized ATAC \n signal (0-1) \nLn(CPM+1)"
+file_name <- "heatmap_vista_hdma_maxpeakoverlap.pdf"
+
+
+break_points <- quantile(dfnorm %>% as.matrix, probs = seq(0.1, 0.9, length.out = length(cmap)))
+color_mapping_1 <- circlize::colorRamp2(break_points, cmap)
+
+break_points <- quantile(dfnorm %>% as.matrix, probs = seq(0.01, 0.99, length.out = length(cmap)))
+color_mapping_2 <- circlize::colorRamp2(break_points, cmap)
+
+color_mapping_3 <- circlize::colorRamp2(seq(0, 0.3, length.out=length(cmap)), cmap)
+
+color_mapping_4 <- circlize::colorRamp2(seq(0, 0.5, length.out=length(cmap)), cmap)
+
+color_mapping_5 <- circlize::colorRamp2(seq(0, 0.8, length.out=length(cmap)), cmap)
+
+
+### cluster within groups ----------------------------------
+
+# add peak group info
+peaks$n_org_pos <- (data.frame(mcols(peaks)[,c("vista_pos_Heart", "vista_pos_Brain", "vista_pos_Eye", "vista_pos_Liver", "vista_pos_Skin")]) == "pos") %>% rowSums
+peaks$group <- "negative"
+mcols(peaks)[peaks$vista_pos_Heart=="pos" & peaks$n_org_pos==1, "group"] <- "heart positive only"
+mcols(peaks)[peaks$vista_pos_Brain=="pos" & peaks$n_org_pos==1, "group"] <- "brain positive only"
+mcols(peaks)[peaks$vista_pos_Eye=="pos" & peaks$n_org_pos==1, "group"] <- "eye positive only"
+mcols(peaks)[peaks$vista_pos_Liver=="pos" & peaks$n_org_pos==1, "group"] <- "liver positive only"
+mcols(peaks)[peaks$vista_pos_Skin=="pos" & peaks$n_org_pos==1, "group"] <- "skin positive only"
+mcols(peaks)[peaks$n_org_pos > 1, "group"] <- "multi-organ positive"
+peaks$group <- factor(peaks$group, levels=c("liver positive only", "skin positive only", "brain positive only", "eye positive only", "multi-organ positive","heart positive only" ))
+
+
+ht_list <- list()
+cmap_list <- c(color_mapping_1, color_mapping_2, color_mapping_3, color_mapping_4, color_mapping_5)
+for (i in seq_along(cmap_list)){
+  ht1 <- Heatmap(
+        dfnorm %>% t, 
+        name=plot_title,
+        top_annotation = ha,
+        right_annotation = ha2,
+        row_split = peaks$group,  
+        cluster_row_slices = T,
+        cluster_rows = T,
+        cluster_columns=F,
+        clustering_distance_columns = "pearson",
+        clustering_distance_rows = "pearson",
+        clustering_method_rows = "complete",
+        clustering_method_columns = "complete",
+        column_names_gp = gpar(fontsize = 2, col=all.annots.sorted$Color),
+        column_labels = all.annots.sorted$Cluster_labelled,
+        column_title = paste0(dim(dfnorm)[1], " HDMA clusters"),
+        row_names_gp = gpar(fontsize=0.5),
+        row_labels = peaks$vista_id,
+        row_title = paste0(dim(dfnorm)[2], " VISTA enhancers"),
+        col = cmap_list[[i]]
+)
+  ht1 <- draw(ht1)
+  ht_list[[i]]  <- ht1
+}
+
+saveRDS(ht_list, paste0(out, "/", file_name, ".rds"))
+
+```
+
+```{r heatmap_vista_hdma_maxpeakoverlap, fig.width=10, fig.height=10, eval=F}
+file_name <- "heatmap_vista_hdma_maxpeakoverlap.pdf"
+ht_list <- readRDS(paste0(out, "/", file_name, ".rds"))
+for (h in ht_list){
+  plot(h)
+}
+
+```
+
+
+## ATAC heatmap Z score
+```{r}
+df <- tmp[,grepl("sum", colnames(tmp))]
+peaks <- vista_peak_matrix@rowRanges
+
+idx_pf <- which((peaks$vista_pos_Brain=="pos") | (peaks$vista_pos_Heart=="pos") | (peaks$vista_pos_Eye=="pos") | 
+        (peaks$vista_pos_Liver=="pos") | (peaks$vista_pos_Skin=="pos"))
+
+# different normalizations
+df <- df[, idx_pf]
+peaks <- peaks[idx_pf,]
+df_lognorm_sub <- (df/rowSums(df)) * 1e6 %>% log1p
+df_lognorm_z_sub <- scale(df_lognorm_sub) %>% as.data.frame
+
+# read saved row order
+ord <- readRDS(glue("{out}/heatmap_vista_hdma_maxpeakoverlap.pdf.rds"))
+ord <- ord[[5]] %>% row_order
+peak_order <- ord %>% unlist %>% unname
+df_lognorm_z_sub <- df_lognorm_z_sub[,peak_order]
+peaks <- peaks[peak_order]
+
+ha <- columnAnnotation(organ=all.annots.sorted$organ, compartment=all.annots.sorted$L0_clusterName,
+                       col=list(compartment=cmap_compartment,
+                                organ=cmap_organ))
+
+rowannot_ls <- list()
+col_ls <- list()
+for (organ in c("Heart", "Brain", "Eye", "Liver", "Skin")){
+  rowannot_ls[paste0("vista_pos_", organ)] <- mcols(peaks)[paste0("vista_pos_", organ)]
+  col_ls[[paste0("vista_pos_", organ)]] <- c(neg="gray", pos=cmap_organ[[organ]])
+}
+
+# order the rows and cols
+ha2 <- HeatmapAnnotation(df=do.call(cbind, rowannot_ls %>% unname), col = col_ls, which="row")
+
+```
+
+```{r, eval=F}
+# Calculate breaks based on quantiles to handle outliers
+cmap <- cmap_chromvar
+dfnorm <- df_lognorm_z_sub
+plot_title <- "Normalized ATAC \n signal (Z-Score) \nLn(CPM+1)"
+file_name <- "heatmap_vista_hdma_maxpeakoverlap_zscore.pdf"
+
+
+break_points <- quantile(dfnorm %>% as.matrix, probs = seq(0.1, 0.9, length.out = length(cmap)))
+color_mapping_1 <- circlize::colorRamp2(break_points, cmap)
+
+break_points <- quantile(dfnorm %>% as.matrix, probs = seq(0.01, 0.99, length.out = length(cmap)))
+color_mapping_2 <- circlize::colorRamp2(break_points, cmap)
+
+color_mapping_3 <- circlize::colorRamp2(seq(-1, 1, length.out=length(cmap)), cmap)
+
+color_mapping_4 <- circlize::colorRamp2(seq(-2, 2, length.out=length(cmap)), cmap)
+
+color_mapping_5 <- circlize::colorRamp2(seq(0, 0.8, length.out=length(cmap)), cmap)
+
+### cluster within groups ----------------------------------
+
+# add peak group info
+peaks$n_org_pos <- (data.frame(mcols(peaks)[,c("vista_pos_Heart", "vista_pos_Brain", "vista_pos_Eye", "vista_pos_Liver", "vista_pos_Skin")]) == "pos") %>% rowSums
+peaks$group <- "negative"
+mcols(peaks)[peaks$vista_pos_Heart=="pos" & peaks$n_org_pos==1, "group"] <- "heart positive only"
+mcols(peaks)[peaks$vista_pos_Brain=="pos" & peaks$n_org_pos==1, "group"] <- "brain positive only"
+mcols(peaks)[peaks$vista_pos_Eye=="pos" & peaks$n_org_pos==1, "group"] <- "eye positive only"
+mcols(peaks)[peaks$vista_pos_Liver=="pos" & peaks$n_org_pos==1, "group"] <- "liver positive only"
+mcols(peaks)[peaks$vista_pos_Skin=="pos" & peaks$n_org_pos==1, "group"] <- "skin positive only"
+mcols(peaks)[peaks$n_org_pos > 1, "group"] <- "multi-organ positive"
+peaks$group <- factor(peaks$group, levels=c("liver positive only", "skin positive only", "brain positive only", "eye positive only", "multi-organ positive","heart positive only" ))
+
+ht_list <- list()
+cmap_list <- c(color_mapping_1, color_mapping_2, color_mapping_3, color_mapping_4, color_mapping_5)
+for (i in seq_along(cmap_list)){
+  ht1 <- Heatmap(
+        dfnorm %>% t, 
+        name=plot_title,
+        top_annotation = ha,
+        right_annotation = ha2,
+        cluster_rows = F,
+        split=peaks$group,
+        cluster_columns=F,
+        column_names_gp = gpar(fontsize = 2, col=all.annots.sorted$Color),
+        column_labels = all.annots.sorted$Cluster_labelled,
+        column_title = paste0(dim(dfnorm)[1], " HDMA clusters"),
+        row_names_gp = gpar(fontsize=0.5),
+        row_labels = peaks$vista_id,
+        row_title = paste0(dim(dfnorm)[2], " VISTA enhancers"),
+        col = cmap_list[[i]]
+)
+  ht1 <- draw(ht1)
+  ht_list[[i]]  <- ht1
+}
+
+saveRDS(ht_list, paste0(out, "/", file_name, ".rds"))
+```
+
+```{r heatmap_vista_hdma_maxpeakoverlap_zscore, fig.width=10, fig.height=10}
+file_name <- "heatmap_vista_hdma_maxpeakoverlap_zscore.pdf"
+ht_list <- readRDS(paste0(out, "/", file_name, ".rds"))
+# for (h in ht_list){
+#   plot(h)
+# }
+plot(ht_list[[4]])
+```
+
+## calculate enrichment
+“If an enhancer is labelled VISTA heart positive, how likely is it going to have higher HDMA ATAC signal than those not VISTA heart positive”
+
+P value = (how many times is the shuffled enrichment > actual enrichment) 
+```{r, eval=F}
+organ <- "Heart"
+# df <- df_lognorm_z_sub
+df <- df_lognorm_sub
+mask_pos <- mcols(peaks)[[paste0("vista_pos_",organ)]] == "pos"
+n_pos <- sum(mask_pos)
+mask_hdma_clust <- all.annots.sorted$organ == organ
+
+avg_signal_neg <- df[mask_hdma_clust,!mask_pos] %>% unlist %>%  mean
+avg_signal_pos <- df[mask_hdma_clust,mask_pos] %>% unlist %>% mean
+
+enrichment <- avg_signal_pos - avg_signal_neg  # actual enrichment, subtract in log space = division in nonlog space
+
+# now create shuffles 
+enrichment_shuffles <- list()
+avg_signal_pos_shuffles <- list()
+n_shuffles <- 10000
+set.seed(16)
+for (i in 1:n_shuffles){
+  idx_pos_label <- sample(1:length(peaks), size = n_pos)
+  mask_pos <- (1:length(peaks)) %in% idx_pos_label
+  neg <- df[mask_hdma_clust,!mask_pos] %>% unlist %>%  mean
+  pos <- df[mask_hdma_clust,mask_pos] %>% unlist %>% mean
+  avg_signal_pos_shuffles[[i]] <- pos
+  enrichment_shuffles[[i]] <- pos - neg
+}
+avg_signal_pos_shuffles <- avg_signal_pos_shuffles %>% unlist
+enrichment_shuffles <- enrichment_shuffles %>% unlist
+sum(enrichment_shuffles > enrichment) / n_shuffles
+sum(avg_signal_pos_shuffles > avg_signal_pos) / n_shuffles
+exp(enrichment)
+```
+
+```{r, eval=F}
+# also try wilcoxon rank sum test
+y <- df[mask_hdma_clust,!mask_pos] %>% unlist
+x <- df[mask_hdma_clust,mask_pos] %>% unlist
+res <- wilcox.test(x, y,
+            alternative = c("greater"),
+            conf.int = T, conf.level = 0.95)
+print(res)
+print(res$statistic/(length(x)*length(y)))
+```
+
+
+## RNA heatmap
+plot the matching RNA heatmap to the ATAC heatmap, use expression of the nearest gene 
+```{r}
+# get peaks
+peaks <- vista_peak_matrix@rowRanges
+idx_pf <- which((peaks$vista_pos_Brain=="pos") | (peaks$vista_pos_Heart=="pos") | (peaks$vista_pos_Eye=="pos") | 
+        (peaks$vista_pos_Liver=="pos") | (peaks$vista_pos_Skin=="pos"))
+peaks <- peaks[idx_pf,]
+
+# get list of all nearest genes first
+addArchRGenome("hg38")
+geneAnnot <- getArchRGenome(geneAnnotation = T, genomeAnnotation = F) %>% as.list
+peaks_anno <- ArchR:::.fastAnnoPeaks(peaks, BSgenome = BSgenome.Hsapiens.UCSC.hg38, geneAnnotation = geneAnnot)
+
+gene.list <- unique(peaks_anno$nearestGene)
+
+dir.create(paste0(out, "/gex/"), recursive = TRUE, showWarnings = F)
+```
+
+get RNA data
+```{r, eval=F}
+for (i in 1:nrow(tissue_meta)){
+  
+  organ <- tissue_meta$organ[i]
+  organcode <- tissue_meta$organcode[i]
+  
+  message(sprintf("@ current organ: %s", organ))
+  
+  out_files <- c(file.path(out, sprintf("gex/all_gex_rna.mean.%s.rds", organcode)),
+                 file.path(out, sprintf("gex/all_gex_rna.detection.%s.rds", organcode)),
+                 file.path(out, sprintf("gex/all_gex_decontx.mean.%s.rds", organcode)),
+                 file.path(out, sprintf("gex/all_gex_decontx.detection.%s.rds", organcode)))
+  
+  if (all(file.exists(out_files))) {
+    
+    message("@ done, skipping.")
+    
+  } else {
+    
+    # read cluster id annotation
+    annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta.txt"), organcode), sep="\t") %>% as.data.frame
+    rownames(annot) <- annot$cb
+    
+    # Raw RNA counts -------------------------------------------------------------
+    # get gene expression (RNA raw counts, scaled to 10000 per cell then log-transformed)
+    message("fetching gene expression from RNA assay")
+    rna_proj <- readRDS(
+      sprintf(here::here("output/01-preprocessing/02/%s/rna_preprocess_output/RNA_obj_clustered_final.rds"),
+              organ))
+    rna_proj <- NormalizeData(rna_proj, assay="RNA")
+    DefaultAssay(rna_proj) <- "RNA"
+    gex.df <- FetchData(rna_proj, vars = gene.list[gene.list %in% rownames(rna_proj)], slot="data") 
+    
+    # add cluster
+    gex.df$cluster <-  paste0(organcode, "_",annot[rownames(gex.df),"L1_clusterID"]) # e.g. AG_0, AG_10
+    gex.df.mean <- gex.df %>% group_by(cluster) %>% dplyr::summarize(across(everything(), mean)) %>% as.data.frame
+    
+    saveRDS(gex.df.mean, file.path(out, sprintf("gex/all_gex_rna.mean.%s.rds", organcode)))
+    
+    # detection rate -------------------------------------------------------------
+    rna.detection <- calc_pct1(gex.df, "cluster")
+    
+    saveRDS(rna.detection, file.path(out, sprintf("gex/all_gex_rna.detection.%s.rds", organcode)))
+    
+    dim(gex.df.mean)
+    dim(rna.detection)
+    
+    # DecontX --------------------------------------------------------------------
+    message("@ fetching gene expression from decontX assay")
+    # get decontX normalized data but get genes in gene list only
+    DefaultAssay(rna_proj) <- "decontX"
+    gex.df <- FetchData(rna_proj, vars = gene.list[gene.list %in% rownames(rna_proj)], slot="data") 
+    
+    # add cluster
+    gex.df$cluster <-  paste0(organcode, "_",annot[rownames(gex.df),"L1_clusterID"]) # e.g. AG_0, AG_10
+    gex.df.mean <- gex.df %>% group_by(cluster) %>% dplyr::summarize(across(everything(), mean)) %>% as.data.frame
+    
+    saveRDS(gex.df.mean, file.path(out, sprintf("gex/all_gex_decontx.mean.%s.rds", organcode)))
+    
+    # detection rate -------------------------------------------------------------
+    decontx_detection <- calc_pct1(gex.df, "cluster")
+    
+    saveRDS(decontx_detection, file.path(out, sprintf("gex/all_gex_decontx.detection.%s.rds", organcode)))
+    
+    dim(gex.df.mean)
+    dim(decontx_detection)
+    
+    rm(rna_proj)
+    
+    message("@ done.")
+    
+  }
+}
+
+```
+
+```{r combine_dfs, eval = FALSE}
+
+# write out gene expression averaged per cluster, binding all rows together
+# dplyr::bind_rows(will fill NAs for missing columns between dataframes being bound togetther)
+all_gex_rna.mean <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("gex/all_gex_rna.mean.{.x}.rds")))) %>% 
+  bind_rows()
+
+all_gex_rna.detection <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("gex/all_gex_rna.detection.{.x}.rds")))) %>% 
+  bind_rows()
+
+all_gex_decontx.mean <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("gex/all_gex_decontx.mean.{.x}.rds")))) %>% 
+  bind_rows()
+
+all_gex_decontx.detection <- map(
+  tissue_meta$organcode,
+  ~ readRDS(file.path(out, glue("gex/all_gex_decontx.detection.{.x}.rds")))) %>% 
+  bind_rows()
+
+dim(all_gex_rna.mean)
+dim(all_gex_rna.detection)
+dim(all_gex_decontx.mean)
+dim(all_gex_decontx.detection)
+
+saveRDS(dplyr::bind_rows(all_gex_rna.mean),          file.path(out, "gex/all_gex_rna.mean.rds"))
+saveRDS(dplyr::bind_rows(all_gex_decontx.mean),      file.path(out, "gex/all_gex_decontx.mean.rds"))
+saveRDS(dplyr::bind_rows(all_gex_rna.detection),     file.path(out, "gex/all_gex_rna.detectionrate.rds"))
+saveRDS(dplyr::bind_rows(all_gex_decontx.detection), file.path(out, "gex/all_gex_decontx.detectionrate.rds"))
+
+```
+
+read gex data
+```{r}
+all_gex_rna.mean <- readRDS(file.path(out, "gex/all_gex_rna.mean.rds"))
+all_gex_decontx.mean <- readRDS(file.path(out, "gex/all_gex_decontx.mean.rds"))
+```
+
+```{r heatmap_vista_hdma_maxpeakoverlap_rna, fig.height=10, fig.width=10, eval=F}
+# read saved row order
+ht_list <- readRDS(glue("{out}/heatmap_vista_hdma_maxpeakoverlap.pdf.rds")) 
+ht <- ht_list[[5]]
+
+ord <- lapply(seq_along(row_order(ht)), function(i){data.frame(idx=row_order(ht)[[i]]) %>% mutate(group=names(row_order(ht))[i])}) %>% do.call(rbind, .)
+ord$group <- factor(ord$group, levels=c("liver positive only", "skin positive only", "brain positive only", "eye positive only", "multi-organ positive","heart positive only" ))
+peak_order <- ord$idx
+genes_sorted <- peaks_anno[peak_order]$nearestGene %>% unname
+clust_sorted <- all.annots.sorted$L0_clusterID
+
+# filter for peaks whose nearest gene has expression data
+rna <- all_gex_rna.mean
+#rna <- all_gex_decontx.mean
+rownames(rna) <- rna$cluster
+idx <- which(genes_sorted %in% colnames(rna))
+mat <- rna[clust_sorted, genes_sorted[idx]]
+mat[is.na(mat)] <- 0
+mat <- as.data.frame(lapply(mat, scales::rescale)) # scale 0 to 1 for each gene across all clusters
+
+# plotting config
+cmap <- cmaps_BOR$whiteBlue
+plot_title <- "Normalized RNA \n signal (0-1) \nLn(TPM+1)"
+
+break_points <- quantile(mat %>% as.matrix, probs = seq(0.1, 0.9, length.out = length(cmap)), na.rm=T)
+color_mapping_1 <- circlize::colorRamp2(break_points, cmap)
+
+break_points <- quantile(mat %>% as.matrix, probs = seq(0.01, 0.99, length.out = length(cmap)), na.rm=T)
+color_mapping_2 <- circlize::colorRamp2(break_points, cmap)
+
+color_mapping_3 <- circlize::colorRamp2(seq(0, 1, length.out=length(cmap)), cmap)
+
+ha3 <- HeatmapAnnotation(df=do.call(cbind, rowannot_ls %>% unname)[idx,], col = col_ls, which="row")
+
+ht1 <- Heatmap(
+        mat %>% t, 
+        name=plot_title,
+        top_annotation = ha,
+        right_annotation = ha3,
+        split = ord[idx,"group"],
+        cluster_rows = F,
+        cluster_columns=F,
+        column_names_gp = gpar(fontsize = 2, col=all.annots.sorted$Color),
+        column_labels = all.annots.sorted$Cluster_labelled,
+        column_title = paste0(dim(mat)[1], " HDMA clusters"),
+        row_names_gp = gpar(fontsize=0.5),
+        row_labels = genes_sorted[idx],
+        row_title = paste0(dim(mat)[2], " nearest genes of VISTA enhancers"),
+        col = color_mapping_3
+)
+
+ht1 <- draw(ht1)
+
+plot(ht1)
+
+```
+
+## RNA heatmap Z score
+```{r heatmap_vista_hdma_maxpeakoverlap_rna_zscore, fig.width=10, fig.height=10}
+# read saved row order
+ht_list <- readRDS(glue("{out}/heatmap_vista_hdma_maxpeakoverlap.pdf.rds")) 
+ht <- ht_list[[5]]
+
+ord <- lapply(seq_along(row_order(ht)), function(i){data.frame(idx=row_order(ht)[[i]]) %>% mutate(group=names(row_order(ht))[i])}) %>% do.call(rbind, .)
+ord$group <- factor(ord$group, levels=c("liver positive only", "skin positive only", "brain positive only", "eye positive only", "multi-organ positive","heart positive only" ))
+peak_order <- ord$idx
+genes_sorted <- peaks_anno[peak_order]$nearestGene %>% unname
+clust_sorted <- all.annots.sorted$L0_clusterID
+
+# filter for peaks whose nearest gene has expression data
+rna <- all_gex_rna.mean
+rownames(rna) <- rna$cluster
+idx <- which(genes_sorted %in% colnames(rna))
+mat <- rna[clust_sorted, genes_sorted[idx]]
+mat[is.na(mat)] <- 0
+mat <- scale(mat) %>% as.data.frame # z score
+
+# plotting config
+# cmap <- cmap_rna
+cmap <- cmap_chromvar
+plot_title <- "Normalized RNA \n signal (Z-Score) \nLn(TPM+1)"
+
+break_points <- quantile(mat %>% as.matrix, probs = seq(0.1, 0.9, length.out = length(cmap)), na.rm=T)
+color_mapping_1 <- circlize::colorRamp2(break_points, cmap)
+
+break_points <- quantile(mat %>% as.matrix, probs = seq(0.01, 0.99, length.out = length(cmap)), na.rm=T)
+color_mapping_2 <- circlize::colorRamp2(break_points, cmap)
+
+color_mapping_3 <- circlize::colorRamp2(seq(-2, 2, length.out=length(cmap)), cmap)
+
+ha3 <- HeatmapAnnotation(df=do.call(cbind, rowannot_ls %>% unname)[idx,], col = col_ls, which="row")
+
+ht1 <- Heatmap(
+        mat %>% t, 
+        name=plot_title,
+        top_annotation = ha,
+        right_annotation = ha3,
+        split = ord[idx,"group"],
+        cluster_rows = F,
+        cluster_columns=F,
+        column_names_gp = gpar(fontsize = 2, col=all.annots.sorted$Color),
+        column_labels = all.annots.sorted$Cluster_labelled,
+        column_title = paste0(dim(mat)[1], " HDMA clusters"),
+        row_names_gp = gpar(fontsize=0.5),
+        row_labels = genes_sorted[idx],
+        row_title = paste0(dim(mat)[2], " nearest genes of VISTA enhancers"),
+        col = color_mapping_3
+)
+
+ht1 <- draw(ht1)
+
+# plot(ht1)
+
+```
+
+## calculate enrichment
+“If an enhancer is labelled VISTA heart positive, how likely is it going to have higher HDMA RNA signal than those not VISTA heart positive”
+
+P value = (how many times is the shuffled enrichment > actual enrichment) 
+```{r, eval=F}
+organ <- "Brain"
+df <- mat
+peaks_test <- peaks_anno[peak_order][idx,]
+mask_pos <- mcols(peaks_test)[[paste0("vista_pos_",organ)]] == "pos"
+n_pos <- sum(mask_pos)
+mask_hdma_clust <- all.annots.sorted$organ == organ
+
+avg_signal_neg <- df[mask_hdma_clust,!mask_pos] %>% unlist %>%  mean
+avg_signal_pos <- df[mask_hdma_clust,mask_pos] %>% unlist %>% mean
+
+enrichment <- avg_signal_pos - avg_signal_neg  # actual enrichment, subtract in log space = division in nonlog space
+
+# now create shuffles 
+enrichment_shuffles <- list()
+avg_signal_pos_shuffles <- list()
+n_shuffles <- 10000
+set.seed(16)
+for (i in 1:n_shuffles){
+  idx_pos_label <- sample(1:length(peaks_test), size = n_pos)
+  mask_pos <- (1:length(peaks_test)) %in% idx_pos_label
+  neg <- df[mask_hdma_clust,!mask_pos] %>% unlist %>%  mean
+  pos <- df[mask_hdma_clust,mask_pos] %>% unlist %>% mean
+  avg_signal_pos_shuffles[[i]] <- pos
+  enrichment_shuffles[[i]] <- pos - neg
+}
+avg_signal_pos_shuffles <- avg_signal_pos_shuffles %>% unlist
+enrichment_shuffles <- enrichment_shuffles %>% unlist
+sum(enrichment_shuffles > enrichment) / n_shuffles
+sum(avg_signal_pos_shuffles > avg_signal_pos) / n_shuffles
+
+```
+
+# Plot tracks 
+VISTA heart pos only, HDMA pos in liver from global peak max overlap approach:
+c("hs2007","mm99","hs2240","mm194","mm122","mm2143","mm69","mm21","mm291","mm296","mm101","mm78","hs2062","mm1668","mm18","mm257","hs502","mm244","mm1343","mm89","mm1211","mm1330","mm1326")
+
+```{r, eval=F}
+# also try wilcoxon rank sum test
+y <- df[mask_hdma_clust,!mask_pos] %>% unlist
+x <- df[mask_hdma_clust,mask_pos] %>% unlist
+res <- wilcox.test(x, y,
+            alternative = c("greater"),
+            conf.int = T, conf.level = 0.95)
+print(res)
+print(res$statistic/(length(x)*length(y)))
+```
+
+## Plot ATAC 
+```{r}
+global_bp_obj <- readRDS(here::here("output/05-misc/01/global_bp_obj.rds"))
+
+# plot
+# region_name <- "mm291"
+# region_str <- "chr2:126673667-126674912"
+region_name <- "mm101"
+region_str <- "chr16:104534-105616"
+region <- GRanges(region_str) + 5e4
+peaks_highlight <- ranges(GRanges(region_str))
+
+highlights <- tibble(
+  xmin = peaks_highlight@start,
+  xmax = peaks_highlight@start + peaks_highlight@width - 1,
+  color = rep("red", length(peaks_highlight)),
+  ymin = -Inf, ymax = Inf, alpha = .2
+)
+```
+
+```{r, eval=F}
+# 
+# add in ABC loops
+global <- readRDS(here::here("output/04-enhancers/06/abc_summary_df.rds"))
+# first get the TSS coords from ABC reference file
+tss <- read.table(here::here("data/reference/tss/CollapsedGeneBounds.hg38.bed"), col.names = c("seqnames", "start", "end", "symbol", "", "strand", "id", "type"))
+tss$tss_start <- 0
+tss[tss$strand=="-", "tss_start"] <- tss[tss$strand=="-", "end"]
+tss[tss$strand=="+", "tss_start"] <- tss[tss$strand=="+", "start"]
+
+#subglobal <- global %>% dplyr::filter(abc_is_linked_to_gene_HT==1)
+subglobal <- global %>% dplyr::filter(abc_is_linked_to_gene_LI==1)
+#subglobal <- global %>% dplyr::filter((abc_is_linked_to_gene_HT==1) | (abc_is_linked_to_gene_LI==1))
+overlap <- findOverlaps(region, GRanges(subglobal))
+subglobal <- subglobal[overlap@to,]
+
+subglobal <- merge(subglobal, tss[,c("symbol", "tss_start")], by.x="abc_linked_gene_LI", by.y="symbol", all.x=T)
+
+loops <- subglobal[,c("seqnames", "abc_linked_gene_LI", "peak_name", "med_abc_score_LI")]
+loops$chr <- loops$seqnames
+loops$start <- pmin((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+loops$end <- pmax((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+
+p <- trackplot_helper_v2c(
+  region=region,
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  loops=loops,
+  loop_color = "med_abc_score_LI",
+  loop_label = "ABC Liver",
+  highlights = highlights
+)
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_LI_abc.png"), dpi=300, width=9, height=8, units="in")
+
+
+```
+## Plot GEX
+```{r, eval=F}
+# gene_name <- "GYPC"
+gene_name <- "HBA2"
+####################
+
+p <- trackplot_helper_v2c(
+  gene=gene_name,
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix = global_bp_obj$rna,
+  loops=loops,
+  flank = 5e4,
+  loop_color = "med_abc_score_LI",
+  loop_label = "ABC Liver",
+  highlights = highlights
+)
+
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_LI_abc_", gene_name, "gex.png"), dpi=300, width=12, height=8, units="in")
+```
+### Liver clusters
+```{r, eval=F}
+
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ %in% c("Liver"))
+
+p <- trackplot_helper_v2c(
+  gene=gene_name,
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix = global_bp_obj$rna[,submeta$cb],
+  loops=loops,
+  flank = 1e4,
+  #flank = 2e5,
+  loop_color = "med_abc_score_LI",
+  loop_label = "ABC Liver",
+  highlights = highlights
+)
+
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_LI_abc_", gene_name, "gex_liveronly.png"), dpi=300, width=12, height=8, units="in")
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_LI_abc_", gene_name, "gex_liveronly.pdf"), dpi=300, width=8, height=8, units="in")
+
+```
+
+
+```{r plot_track_mm101_wider_LI_abc_liveronly, fig.width=8, fig.height=8}
+#region <- GRanges("chr2:126655000-126678000") # mm291
+# region <- GRanges("chr16:103900-181800") # mm101
+region <- GRanges("chr16:76800-181800") # mm101 wider to include alpha globin superenhancer
+
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ %in% c("Liver"))
+
+submeta$archive_L2_clusterName <- factor(submeta$archive_L2_clusterName, levels=c("erythroblast", "cycling erythroblast", "early erythroblast", "Kupffer", "B cell progenitor", "cholangiocyte", "endothelial", "hepatocyte", "megakaryocyte", "stellate"))
+
+# filter for only ABC loops that originate from the enhancer 
+region_narrow <-  GRanges("chr16:104534-105616")
+
+# can only start inside the enhancer 
+mask <- ((start(global_bp_obj$loops_abc$Liver) >=  start(region_narrow)) & (start(global_bp_obj$loops_abc$Liver) <=  end(region_narrow))) & (seqnames(global_bp_obj$loops_abc$Liver)=="chr16") 
+
+# can start or end inside the enhancer
+# mask <- (((start(global_bp_obj$loops_abc$Liver) >=  start(region_narrow)) & (start(global_bp_obj$loops_abc$Liver) <=  end(region_narrow))) | ((end(global_bp_obj$loops_abc$Liver) >=  start(region_narrow)) & (end(global_bp_obj$loops_abc$Liver) <=  end(region_narrow)))) & (seqnames(global_bp_obj$loops_abc$Liver)=="chr16") 
+
+
+p1 <- trackplot_helper_v2c(
+  region=region,
+  clusters=submeta$archive_L2_clusterName, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts,
+  loops=global_bp_obj$loops_abc$Liver[mask] %>% unique,
+  loop_color = "ABC.Score",
+  loop_label = "ABC Liver",
+  highlights = highlights
+)
+
+p2 <- trackplot_helper_v2c(
+  gene="HBA2",
+  clusters=submeta$archive_L2_clusterName, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix = global_bp_obj$rna[,submeta$cb],
+  flank = 5e3,
+  highlights = highlights
+)
+
+p1
+p2
+```
+
+
+### organ specific clusters 
+```{r, eval=F}
+organ_code <- "BR"
+organ_name <- "Brain"
+
+abc_is_linked_to_gene_organ <- paste0("abc_is_linked_to_gene_", organ_code)
+abc_linked_gene_organ <- paste0("abc_linked_gene_", organ_code)
+med_abc_score_organ <- paste0("med_abc_score_", organ_code)
+
+subglobal <- global %>% dplyr::filter(global[abc_is_linked_to_gene_organ]==1)
+overlap <- findOverlaps(region, GRanges(subglobal))
+subglobal <- subglobal[overlap@to,]
+
+subglobal <- merge(subglobal, tss[,c("symbol", "tss_start")], by.x=abc_linked_gene_organ, by.y="symbol", all.x=T)
+
+loops <- subglobal[,c("seqnames", abc_linked_gene_organ, "peak_name", med_abc_score_organ)]
+loops$chr <- loops$seqnames
+loops$start <- pmin((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+loops$end <- pmax((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+
+Sys.time()
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ_code==organ_code)
+p <- trackplot_helper_v2c(
+  #gene=gene_name,
+  region=region,
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix = global_bp_obj$rna[,submeta$cb],
+  loops=loops,
+  flank = 5e4,
+  loop_color = med_abc_score_organ,
+  loop_label = paste0("ABC ", organ_name),
+  highlights = highlights
+)
+
+Sys.time()
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_", organ_code, "_abc_", gene_name, "gex_", tolower(organ_name), "only.png"), dpi=300, width=12, height=8, units="in")
+
+
+```
+
+### P2G loops
+```{r, eval=F}
+global_atac_proj <- loadArchRProject(here::here("output/01-preprocessing/03/allSamples_decontx"))
+loops <- get_p2g_loops(global_atac_proj)
+
+p <- trackplot_helper_v2c(
+  region=region,
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  loops=GRanges(loops), 
+  loop_color="Correlation", 
+  loop_label = "P2G Links (Global)",
+  highlights = highlights
+)
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_track_", region_name, "_globalp2g.png"), dpi=300, width=12, height=8, units="in")
+
+
+
+
+```
+
+## Plot contrib scores
+### inputs
+```{r}
+# region <- "chr16:104534-105616" # mm101
+region <- "chr16:105080-105200" # zoomed in mm101
+chrombp_outdir <- here::here("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/")
+finemo_param <- "counts_v0.23_a0.8_all"
+
+global_bp_obj <- readRDS(here::here("output/05-misc/01/global_bp_obj.rds"))
+
+# hits 
+cluster <- "Liver_c0" # for loading hits only
+hits <- global_bp_obj$hits[[cluster]]
+```
+
+### subset global
+```{r}
+# subset the global object
+sub_meta <- global_bp_obj$cell_metadata %>%
+  dplyr::filter(organ=="Liver") 
+
+sub_meta$archive_L2_clusterName <- factor(sub_meta$archive_L2_clusterName, levels=c( "erythroblast", "cycling erythroblast", "early erythroblast", "Kupffer", "B cell progenitor", "cholangiocyte", "endothelial", "hepatocyte", "megakaryocyte", "stellate"))
+```
+
+### plot contribs
+```{r}
+track_contribs_list <- list()
+
+for (L2_cluster in levels(sub_meta$archive_L2_clusterName)){
+  # L2_cluster <- "erythroblast"
+  print(L2_cluster)
+  L1_clusters <- sub_meta[sub_meta$archive_L2_clusterName==L2_cluster, "Cluster_chrombpnet"] %>% unique
+  
+  bw_contrib_list <- list()
+  for (clust in L1_clusters){
+    # load contribution scores
+    print(paste0("loading contrib scores from ", clust))
+    bw_contrib_list[[clust]] <- rtracklayer::import.bw(glue(here::here("output/03-chrombpnet/01-models/contribs/bias_Heart_c0_thresh0.4/{clust}/average_shaps.counts.bw")), selection=BigWigSelection(GRanges(region))) %>% as.data.frame 
+  }
+  tmp <- do.call(rbind, bw_contrib_list)
+  bw_contrib <- tmp %>% dplyr::group_by(seqnames,start,end, width, strand) %>% dplyr::summarise(score=mean(score)) %>% GRanges
+  
+  track_contribs_list[[L2_cluster]] <- trackplot_contribs_BL(bw_contrib,
+                                       region = region, 
+                                       track_label = NULL,
+                                       facet_label = L2_cluster,
+                                       genome = BSgenome.Hsapiens.UCSC.hg38,
+                                       rel_height = 1,
+                                       ymax = 0.25, ymin=-0.039,
+                                       ) + xlab(NULL)
+}
+
+```
+
+### combine plots
+```{r contrib_scores_mm101, fig.width=8, fig.height=6}
+# gene annotation
+track_genes <- trackplot_gene(global_bp_obj$transcripts, region) +
+  ggplot2::guides(color = "none")
+
+# scale bar for the top
+scale_plot <- trackplot_scalebar(region)
+
+
+track_hits <- trackplot_genome_annotation(loci = hits,
+                            region = region,
+                            color_by = "score",
+                            show_strand = T,
+                            colors = c("white", "red"), 
+                            label_size = 3,
+                            label_by = "name",
+                            track_label = "Instances")
+
+
+plot_list <- list(track_genes + highlight_region(region, alpha = 0.4, color = "yellow"), track_hits)
+
+p <- trackplot_combine(c(list(scale_plot), track_contribs_list, plot_list),
+                  title = str_to_pretty(region)) &
+  ggplot2::theme(legend.direction = "vertical")
+p
+# ggsave(plot=p, paste0(figout, "contrib_scores_mm101.pdf"), width=8, height=6)
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

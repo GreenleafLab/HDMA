@@ -1,0 +1,71 @@
+output_dir: "$PROJ_ROOT/output/01-preprocessing/01/Liver"
+
+## Uncomment these lines to do a trial run with only two small test chunks per sublibrary
+# chunk_size: 2_000_000
+# test_chunks: 2
+chunk_size: 20_000_000
+
+genome:
+  bowtie2: $PROJ_ROOT/data/reference/bowtie2/hg38
+  star: $PROJ_ROOT/data/reference/star/
+  gene_annotation: $PROJ_ROOT/data/reference/gtf/gencode.v41.annotation.BPfiltered.gtf
+
+# Regular expressions for 1st round barcodes that should be mapped to each sample
+# Must cover all 1st round barcodes 
+# (use a dummy Undetermined sample if some 1st round barcodes are unused)
+samples:
+  T398_b15_Liver_PCW17:  "A[0-9][0-9]"
+  dummy:  "B[0-9][0-9]"
+  T375_b15_Liver_PCW15: "C[0-9][0-9]"
+  T350_b15_Liver_PCW21:  "D[0-9][0-9]"
+  T235_b15_Liver_PCW21:  "E[0-9][0-9]"
+  T71_b15_Liver_PCW18:  "F[0-9][0-9]"
+  T275_b15_Liver_PCW18:  "G[0-9][0-9]"
+  T166_b15_Liver_PCW19:  "H[0-9][0-9]"
+
+sequencing:
+  230331a:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230331_A00509_0698_AH3YGHDSX7
+    tile_chunks: 20 # speed up bcl2fastq 
+    ATAC_I2:
+      CL105: CTTAATGC
+      CL106: GTTATCGT
+      CL108: AACAATCA
+      CL109: TCCGTGCC
+      CL110: GAATGATC
+      CL111: ATGACCAT
+      CL112: TTGGTACG
+  230315:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230315_A00509_0687_BH2YMVDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL107: CCCGCAGG
+    RNA_I2:
+      CL107: CCATGTGA
+  230404a:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230404_A00509_0700_AH52J3DSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL113: TAAACTGG
+      CL114: GGGCCGGT
+    RNA_I2:
+      CL105: ACTTCTAG
+      CL106: ATCTGGCG
+      CL108: TCGAGTTC
+      CL109: AACGGTGG
+      CL110: GTAACTTA
+      CL111: CACGTCTC
+      CL112: TTAGGCAA
+      CL113: CAAGTTAA
+      CL114: TGTTAAAG
+  230428:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230428_A00509_0718_AH5KFCDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL107: CCCGCAGG
+    RNA_I2:
+      CL107: CCATGTGA

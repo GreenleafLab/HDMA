@@ -1,0 +1,49 @@
+# misc
+*.swp
+*.tsv
+*.csv
+*.rds
+*.Rds
+*.Rda
+*.txt
+*.Rhistory
+*.copy_files.sh
+*.html
+*.Rproj
+
+# custom
+code/ROOT_DIR.txt
+code/SJ_RENV_DIR.txt
+code/AK_PROJ_DIR.txt
+code/knit.sh
+code/knit_BL.sh
+code/01-preprocessing/02-preprocessing_per_organ
+code/*/*.html
+code/*/*/*.html
+code/*/ArchRLogs/
+code/*/*/__pycache__
+code/03-chrombpnet/config.sh
+code/04-enhancers/profile/config.yaml
+code/05-misc/DATA*
+code/check_paths.sh
+code/03-chrombpnet/.*
+
+# plots
+*/Rplots.pdf
+code/*/Rplots.pdf
+code/logs
+
+# outs
+output
+
+# ipynb
+.ipynb_checkpoints
+code/.ipynb_checkpoints
+code/*/.ipynb_checkpoints
+
+# figures
+figures
+
+# data
+data
+.Rproj.user

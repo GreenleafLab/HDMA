@@ -1,0 +1,630 @@
+---
+title: "correlate ATAC data per cluster using markerpeaks or chromvar of marker peaks"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+params:
+  threads: NULL
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "02-global_analysis/03" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+script_path <- here::here("code/utils")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+------------------------------------------------------------------------
+
+# Overview
+
+In this analysis we correlate sample clusters using either markerpeaks or chromvar of markerpeaks.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(ArchR)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(cowplot)
+library(Seurat)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(dendextend)
+library(ComplexHeatmap)
+library(chromVAR)
+library(motifmatchr)
+library(circlize)
+
+# shared project scripts/functions
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+#source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_minimal())
+
+# selin functions
+# adapting from scrattch.hicat
+# https://github.com/AllenInstitute/scrattch.hicat/blob/7ccfbc24e3a51326740d08b5b306b18afeb890d9/R/dendro.R#L49
+pvclust_show_signif_gradient <- function(dend, pvclust_obj, signif_type = c("bp", "au"),
+                                         signif_col_fun = NULL, ...) {
+
+  signif_type <- match.arg(signif_type)
+  pvalue_per_node <- pvclust_obj$edges[[signif_type]]
+  ord <- rank(get_branches_heights(dend, sort = FALSE))
+  pvalue_per_node <- pvalue_per_node[ord]
+  signif_col <- signif_col_fun(100)
+  pvalue_by_all_nodes <- rep(NA, dendextend::nnodes(dend))
+  ss_leaf <- which_leaf(dend)
+  pvalue_by_all_nodes[!ss_leaf] <- pvalue_per_node
+  pvalue_by_all_nodes <- na_locf(pvalue_by_all_nodes)
+  the_cols <- signif_col[round(pvalue_by_all_nodes * 100)]
+  signif_lwd = seq(0.5,2,length.out=100)
+  the_lwds = signif_lwd[round(pvalue_by_all_nodes * 100)]
+  dend = dend %>%
+    assign_values_to_branches_edgePar(the_cols, "col") %>%
+    assign_values_to_branches_edgePar(the_lwds, "lwd") %>%
+    assign_values_to_branches_edgePar(pvalue_by_all_nodes, "conf")
+}
+
+build_dend <- function(mat, n_boot = 100, distance = "cor", hclust = "complete") {
+
+  pvclust_res <- pvclust::pvclust(mat,
+                                  nboot = n_boot,
+                                  method.dist = distance,
+                                  method.hclust = hclust)
+
+  dend <- as.dendrogram(pvclust_res$hclust)
+  
+  dend <- dend %>% pvclust_show_signif_gradient(
+    pvclust_res,
+    signif_type = "bp",
+    signif_col_fun = colorRampPalette(c("gray90", "gray50", "black")))
+
+  message("done next step")
+  return(list(dend = dend, pvclust_res = pvclust_res))
+
+}
+
+```
+
+# Get tissue metadata
+
+```{r}
+
+tissue_meta <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+
+```
+# Get all annotations
+
+```{r get_annot}
+# add organ colors
+col.data.frame <- data.frame(Color=cmap_organ) %>% dplyr::mutate(organ=names(cmap_organ))
+
+organ.code.list <- tissue_meta$organcode
+all.annots <- lapply(1:length(organ.code.list), function(i){
+  # read cluster id annotation
+  annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta_cluster.txt"), organ.code.list[i]), sep="\t") %>% as.data.frame
+  rownames(annot) <- annot$cb
+  annot$L0_clusterID <- paste0(organ.code.list[i],"_",annot$L1_clusterID)
+  annot$L3_clusterID <- paste0(organ.code.list[i],"_",annot$L3_clusterName)
+  return(annot)
+})
+all.annots <- dplyr::bind_rows(all.annots)
+rownames(all.annots) <- all.annots$L0_clusterID
+
+all.annots <- all.annots %>%
+  mutate(Cluster = paste0(organ_code, "_",L1_clusterID)) %>%
+  mutate(Cluster_labelled = paste0(organ_code, "_", L1_clusterID, "_", L3_clusterName)) %>%
+  left_join(col.data.frame) %>%
+  tibble::column_to_rownames(var = "Cluster")
+all.annots
+```
+# Load RNA dendrogram order
+```{r}
+# use RNA dendrogram order
+rna_dend_order <- read.csv(here::here("output/02-global_analysis/02/cluster_metadata_dend_order.tsv"), sep="\t")
+
+```
+
+
+# Load marker peaks
+
+```{r load, eval=FALSE}
+marker_peaks_all <- readRDS(here::here("output/01-preprocessing/03/markerPeaks_Clusters.rds"))
+```
+
+# Lenient marker peak cutoff
+Cutoff FDR <= 0.1 and Log2FC >=0.5
+
+```{r, eval=FALSE}
+marker_peaks <- getMarkers(marker_peaks_all, cutOff = "FDR <= 0.1 & Log2FC >= 0.5")
+marker_peaks
+
+```
+
+## Clean up the marker peaks and remove duplicates
+
+```{r dedup_markers, eval=FALSE}
+# unique(GRanges) only dedups based on genomic ranges not considering other columns
+tmp <- marker_peaks %>% unlist %>% as.data.frame %>% rownames_to_column(var="organ") %>% GRanges %>% unique
+tmp <- tmp %>% as.data.frame
+marker_peaks_unique <- tmp[,c("seqnames", "start", "end")]
+marker_peaks_unique
+
+```
+
+## Get pseudobulked Peak Matrix
+
+```{r get_marker_peak_pseudobulked, eval=FALSE}
+pb_peak <- readRDS(here::here("output/01-preprocessing/03/allorgan_peakmatrix_pseudobulked.rds"))
+
+# filter for marker peaks only
+rowData(pb_peak)$rowid <- rownames(rowData(pb_peak))
+marker_df <- merge(rowData(pb_peak), marker_peaks_unique)
+pb_peak_marker <- pb_peak[marker_df$rowid,]
+saveRDS(pb_peak_marker, file.path(out, "pseudobulked_marker_peak_matrix.rds"))
+pb_peak_marker
+```
+
+### Run correlation on marker peak matrix
+
+```{r}
+pb_peak_marker <- readRDS(file.path(out, "pseudobulked_marker_peak_matrix.rds"))
+mat <- pb_peak_marker@assays@data$PeakMatrix
+cluster_pb <- cor(mat)
+```
+
+```{r, eval=FALSE}
+dend_res_pb <- build_dend(cluster_pb, n_boot = 100)
+saveRDS(dend_res_pb, file.path(out, "dend_res_markerpeak_pseudobulked.rds"))
+```
+
+```{r}
+dend_res_pb <- readRDS(file.path(out, "dend_res_markerpeak_pseudobulked.rds"))
+dend_labeled_pb <- dend_res_pb$dend
+```
+
+### Plot correlation based on pseudobulk
+
+```{r marker_peak_pseudobulk_cor_heatmap, fig.width = 20, fig.height = 20}
+clust_order <- rev(order.dendrogram(dend_labeled_pb))
+
+dff1 <- cluster_pb[clust_order, clust_order]
+ht1 <- Heatmap(dff1, name="Pseudobulked marker peaks \ncount correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots[colnames(cluster_pb)[clust_order], "Cluster_labelled"],
+               row_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_pb)[clust_order], "Color"]),
+               column_labels = all.annots[colnames(cluster_pb)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_pb)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(cluster_pb),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+# plot by RNA dendrogram order 
+clust_order <- rev(all.annots.rnadend$origOrder)
+dff2 <- cluster_pb[clust_order, clust_order]
+
+ht2 <- Heatmap(dff2, name="Pseudobulked marker peaks \ncount correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots.rnadend[colnames(cluster_pb)[clust_order], "Cluster_labelled"],
+               row_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_pb)[clust_order], "Color"]),
+               column_labels = all.annots.rnadend[colnames(cluster_pb)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_pb)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+# draw
+draw(ht1)
+draw(ht2)
+```
+
+## ChromVAR on pseudobulked Peak Matrix
+
+```{r, eval=FALSE}
+chromvar_pb <- pb_peak_marker
+
+# convert into a RangedSummarizedExperiment
+allseqinfo <- BSgenome.Hsapiens.UCSC.hg38@seqinfo
+seqlevels(allseqinfo) <- c(paste0("chr",1:22),"chrX")
+marker_peaks <- GRanges(seqnames = rowData(chromvar_pb)$seqnames,IRanges(rowData(chromvar_pb)$start, rowData(chromvar_pb)$end), seqinfo = allseqinfo)
+rowRanges(chromvar_pb) <- marker_peaks
+assayNames(chromvar_pb) <- "counts"
+
+# add gc bias, filter, motif matching
+chromvar_pb <- addGCBias(chromvar_pb, genome = BSgenome.Hsapiens.UCSC.hg38)
+#chromvar_pb <- filterPeaks(chromvar_pb)
+#chromvar_pb.filt <- filterPeaks(chromvar_pb, min_fragments_per_peak = 1000)
+saveRDS(chromvar_pb, file.path(out, "marker_peaks_pseudobulk_bias.rds"))
+
+motifs <- readRDS(here::here("data/external/Kartha2022_cisbp/cisBP_human_pfms_2021.rds")) # this is from Kartha et al 2022 Cell Genomics
+
+motif_ix <- matchMotifs(motifs, chromvar_pb,
+                        genome = BSgenome.Hsapiens.UCSC.hg38)
+saveRDS(motif_ix, file.path(out,"marker_peaks_pseudobulk_matched_motif_cisbp2021JB.rds"))
+
+# computing deviations
+all.dev <- computeDeviations(object = chromvar_pb,
+                         annotations = motif_ix)
+saveRDS(all.dev, file.path(out, "marker_peaks_pseudobulk_chromvar.rds"))
+```
+
+### Run correlation on chromvar deviation z score matrix
+
+```{r}
+all.dev <- readRDS(file.path(out, "marker_peaks_pseudobulk_chromvar.rds"))
+mat <- all.dev@assays@data$z
+cluster_chromvar <- cor(mat)
+cluster_chromvar_feat <- cor(t(mat))
+```
+
+```{r, eval=FALSE}
+# cluster columns (cell clusters)
+dend_res_chromvar <- build_dend(cluster_chromvar, n_boot = 100)
+saveRDS(dend_res_chromvar, file.path(out, "dend_res_markerpeak_chromvar.rds"))
+
+# cluster rows (features)
+dend_res_chromvar_feat <- build_dend(cluster_chromvar_feat, n_boot = 100)
+saveRDS(dend_res_chromvar_feat, file.path(out, "dend_res_markerpeak_chromvar_feat.rds"))
+```
+
+```{r}
+dend_res_chromvar <- readRDS(file.path(out, "dend_res_markerpeak_chromvar.rds"))
+dend_labeled_chromvar <- dend_res_chromvar$dend
+
+dend_res_chromvar_feat <- readRDS(file.path(out, "dend_res_markerpeak_chromvar_feat.rds"))
+dend_labeled_chromvar_feat <- dend_res_chromvar_feat$dend
+```
+
+### Plot TF vs cluster heatmap
+```{r marker_peak_chromvar_cluster_heatmap, fig.width=20, fig.height=30}
+clust_order <- rev(order.dendrogram(dend_labeled_chromvar))
+feat_order <- rev(order.dendrogram(dend_labeled_chromvar_feat))
+df <- mat[feat_order, clust_order]
+
+# Calculate breaks based on quantiles to handle outliers
+break_points <- quantile(df, probs = seq(0.01, 0.99, length.out = length(cmap_chromvar)))
+color_mapping <- colorRamp2(break_points, cmap_chromvar)
+
+ht1 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 4),
+               column_labels = all.annots[colnames(df), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(df), "Color"]),
+               col = color_mapping
+)
+draw(ht1)
+
+# instead of the dendrograms we built, try ComplexHeatmap built in hierarchical clustering
+ht2 <- Heatmap(mat, name="ChromVAR deviations z-score",
+               cluster_columns = T,
+               cluster_rows = T,
+               row_names_gp = gpar(fontsize = 4),
+               column_labels = all.annots[colnames(mat), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(mat), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht2)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(mat),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+# plot by RNA dendrogram order 
+clust_order <- rev(all.annots.rnadend$origOrder)
+feat_order <- rev(order.dendrogram(dend_labeled_chromvar_feat))
+df <- mat[feat_order, clust_order]
+
+ht3 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 4),
+               column_labels = all.annots.rnadend[colnames(df), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(df), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht3)
+```
+
+
+### Plot correlation based on chromvar
+
+```{r marker_peak_chromvar_cor_heatmap, fig.width = 20, fig.height = 20}
+clust_order <- rev(order.dendrogram(dend_labeled_chromvar))
+
+dff1 <- cluster_chromvar[clust_order, clust_order]
+ht1 <- Heatmap(dff1, name="ChromVAR deviations \nz score correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               row_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_chromvar)[clust_order], "Color"]),
+               column_labels = all.annots[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_chromvar)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(cluster_chromvar),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+
+# plot by RNA dendrogram order 
+clust_order <- rev(all.annots.rnadend$origOrder)
+dff2 <- cluster_chromvar[clust_order, clust_order]
+
+ht2 <- Heatmap(dff2, name="ChromVAR deviations \nz score correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               #row_title = paste0("ChromVAR Deviations (",length(tf.set), " TFs)"),
+               #row_title_side = "left",
+               row_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Color"]),
+               column_labels = all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+# draw
+draw(ht1)
+draw(ht2)
+```
+### Run correlation, filter for top half variable tf only
+
+```{r}
+#all.dev <- readRDS(file.path(out, "marker_peaks_pseudobulk_chromvar.rds"))
+mat <- all.dev@assays@data$z
+
+# identify tf subset with most variability
+maxz <- rowMaxs(mat)
+cutoff <- maxz %>% quantile(0.5)
+mat.filtered <- mat[which(maxz>cutoff),]
+tf.set <- rownames(mat.filtered)
+
+cluster_chromvar <- cor(mat.filtered)
+cluster_chromvar_feat <- cor(t(mat.filtered))
+```
+
+```{r, eval=FALSE}
+# cluster columns (cell clusters)
+dend_res_chromvar <- build_dend(cluster_chromvar, n_boot = 100)
+saveRDS(dend_res_chromvar, file.path(out, "dend_res_markerpeak_chromvar_tophalfchromvarz.rds"))
+
+# cluster rows (features)
+dend_res_chromvar_feat <- build_dend(cluster_chromvar_feat, n_boot = 100)
+saveRDS(dend_res_chromvar_feat, file.path(out, "dend_res_markerpeak_chromvar_feat_tophalfchromvarz.rds"))
+
+```
+
+```{r}
+dend_res_chromvar <- readRDS(file.path(out, "dend_res_markerpeak_chromvar_tophalfchromvarz.rds"))
+dend_labeled_chromvar <- dend_res_chromvar$dend
+
+dend_res_chromvar_feat <- readRDS(file.path(out, "dend_res_markerpeak_chromvar_feat_tophalfchromvarz.rds"))
+dend_labeled_chromvar_feat <- dend_res_chromvar_feat$dend
+```
+
+
+### Plot correlation, filter for top half variable tf only
+
+```{r marker_peak_chromvar_tophalfz_cor_heatmap, fig.width = 20, fig.height = 20}
+clust_order <- rev(order.dendrogram(dend_labeled_chromvar))
+
+dff1 <- cluster_chromvar[clust_order, clust_order]
+ht1 <- Heatmap(dff1, name="ChromVAR deviations \nz score correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               row_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_chromvar)[clust_order], "Color"]),
+               row_title = paste0("ChromVAR Deviations (",length(tf.set), " TFs)"),
+               row_title_side = "left",
+               column_labels = all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_chromvar)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(cluster_chromvar),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+
+# plot by RNA dendrogram order 
+clust_order <- rev(all.annots.rnadend$origOrder)
+dff2 <- cluster_chromvar[clust_order, clust_order]
+
+ht2 <- Heatmap(dff2, name="ChromVAR deviations \nz score correlations",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_labels = all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               row_title = paste0("ChromVAR Deviations (",length(tf.set), " TFs)"),
+               row_title_side = "left",
+               row_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Color"]),
+               column_labels = all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(cluster_chromvar)[clust_order], "Color"]),
+               col = cmap_chromvar
+)
+
+# draw
+draw(ht1)
+draw(ht2)
+```
+
+### Plot TF vs cluster heatmap, top half variable tf only
+```{r marker_peak_chromvar_cluster_heatmap_tophalfz, fig.width=20, fig.height=30}
+clust_order <- rev(order.dendrogram(dend_labeled_chromvar))
+feat_order <- rev(order.dendrogram(dend_labeled_chromvar_feat))
+df <- mat.filtered[feat_order, clust_order]
+
+# Calculate breaks based on quantiles to handle outliers
+break_points <- quantile(df, probs = seq(0.01, 0.99, length.out = length(cmap_chromvar)))
+color_mapping <- colorRamp2(break_points, cmap_chromvar)
+
+ht1 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 6),
+               column_labels = all.annots[colnames(cluster_chromvar)[clust_order], "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(cluster_chromvar)[clust_order], "Color"]),
+               col = color_mapping
+)
+draw(ht1)
+
+# instead of the dendrograms we built, try ComplexHeatmap built in hierarchical clustering
+ht2 <- Heatmap(mat.filtered, name="ChromVAR deviations z-score",
+               cluster_columns = T,
+               cluster_rows = T,
+               row_names_gp = gpar(fontsize = 6),
+               column_labels = all.annots[colnames(mat), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots[colnames(mat), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht2)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(mat.filtered),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+# plot by RNA dendrogram order 
+clust_order <- rev(all.annots.rnadend$origOrder)
+feat_order <- rev(order.dendrogram(dend_labeled_chromvar_feat))
+df <- mat.filtered[feat_order, clust_order]
+
+ht3 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 7),
+               column_labels = all.annots.rnadend[colnames(df), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(df), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht3)
+
+```
+
+### Plot TF vs cluster heatmap, manually selected TFs only
+```{r marker_peak_chromvar_cluster_heatmap_manual, fig.width=20, fig.height=7}
+source(here::here("output/01-preprocessing/02/shared/markergenes/markergenes_dendro.R"))
+
+mat <- all.dev@assays@data$z
+
+mat.filtered <- mat[TFSets[TFSets %in% rownames(mat)],]
+tf.set <- rownames(mat.filtered)
+
+all.annots.rnadend <- merge(all.annots, rna_dend_order[,c("Cluster", "Order")], by.x="L0_clusterID", by.y="Cluster", all.x=T)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+all.annots.rnadend <- all.annots.rnadend[colnames(mat.filtered),] %>% mutate(origOrder=1:dim(all.annots.rnadend)[1]) %>% arrange(by=Order)
+rownames(all.annots.rnadend) <- all.annots.rnadend$L0_clusterID
+
+# plot by RNA dendrogram order 
+clust_order <- all.annots.rnadend$origOrder
+df <- mat.filtered[, clust_order]
+
+# Calculate breaks based on quantiles to handle outliers
+# break_points <- quantile(df, probs = seq(0.1, 0.9, length.out = length(cmap_chromvar)))
+break_points <- quantile(df, probs=c(0.05, 0.06, 0.1, 0.15, 0.5, 0.85, 0.9, 0.94, 0.95))
+color_mapping <- colorRamp2(break_points, cmap_chromvar)
+
+
+ht3 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 7),
+               column_labels = all.annots.rnadend[colnames(df), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(df), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht3)
+
+# Calculate breaks based on quantiles to handle outliers
+cmap_whitered <- c("white", "red")
+break_points <- quantile(df, probs = seq(0.1, 0.9, length.out = length(cmap_whitered)))
+color_mapping <- colorRamp2(break_points, colors = cmap_whitered)
+
+
+ht4 <- Heatmap(df, name="ChromVAR deviations z-score",
+               cluster_columns = F,
+               cluster_rows = F,
+               row_names_gp = gpar(fontsize = 7),
+               column_labels = all.annots.rnadend[colnames(df), "Cluster_labelled"],
+               column_names_gp = gpar(fontsize = 8, col=all.annots.rnadend[colnames(df), "Color"]),
+               col = color_mapping
+               )
+
+draw(ht4)
+
+```
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```

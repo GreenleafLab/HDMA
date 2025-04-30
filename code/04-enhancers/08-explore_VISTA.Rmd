@@ -1,0 +1,268 @@
+---
+title: "Explore VISTA enhancer database"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/08" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+script_path <- here::here("code/utils/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+We received the VISTA-validated enhancer set from collaborators. Here we explore the
+data to guide our handling of the dataset for training/testing validation.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(cowplot)
+library(GenomicRanges)
+library(rtracklayer)
+
+# shared project scripts/functions
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+# Load data
+
+```{r load_dict}
+
+tissue_dict <- read_csv(here::here("data/external/2024-01-24_vista_@mkosicki/tissue.dictionary.csv")) %>% 
+  mutate(HDMA_tissue = case_when(
+    tissue.short == "eye" ~ "Eye",
+    tissue.short == "forebrain" ~ "Brain",
+    tissue.short == "heart" ~ "Heart",
+    tissue.short == "melanocytes" ~ "Skin",
+    tissue.short == "liver" ~ "Liver",
+    TRUE ~ "None"
+  ))
+DT::datatable(tissue_dict)
+
+# make a palette
+cmap_vista_tissue                <- rep("gray70", nrow(tissue_dict))
+names(cmap_vista_tissue)         <- tissue_dict$tissue.short
+cmap_vista_tissue["heart"]       <- cmap_organ["Heart"]
+cmap_vista_tissue["forebrain"]   <- cmap_organ["Brain"]
+cmap_vista_tissue["liver"]       <- cmap_organ["Liver"]
+cmap_vista_tissue["melanocytes"] <- cmap_organ["Skin"]
+cmap_vista_tissue["eye"]         <- cmap_organ["Eye"]
+
+```
+
+
+```{r load_vista}
+
+vista <- read_tsv(here::here("data/external/2024-01-24_vista_@mkosicki/2024-01-24_vista.clean.tsv"))
+tibble::glimpse(vista)
+
+unique(vista$assembly)
+sum(is.na(vista$vista_id))
+
+length(unique(vista$vista_id))
+length(unique(vista$coord))
+
+vista %>% 
+  group_by(coord, assembly) %>% 
+  summarize(assemblies = length(unique(assembly)))
+
+```
+
+
+
+Tissue positivity is represented as follows:
+
+> "tissue", "tissue_positive" and "denominator columns" provide an estimate of how reliable given tissue annotation is
+- e.g. tissue=fb;mb, tissue_positive=5;9, denominator=9 should be read as
+"5/9 transgenic embryos were positive for forebrain, 9/9 for midbrain", which implies
+midbrain staining was stronger and/or more reproducible than forebrain staining
+
+```{r process_vista}
+
+# define a function to split out the tissue positivity into a tidy dataframe
+process_validation <- function(vista_id, tissue, tissue_positive, denominator) {
+  
+  if (tissue == "neg") {
+    
+    tissues <- "none"
+    positives <- 0
+    positives_prop <- 0
+    
+  } else {
+    
+    tissues <- stringr::str_split(tissue, ";")[[1]]
+    positives <- as.numeric(stringr::str_split(tissue_positive, ";")[[1]])
+    positives_prop <- positives / denominator
+    
+  }
+  
+  return(data.frame("vista_id"      = vista_id,
+                    "tissue"        = tissues,
+                    "n_positive"    = positives,
+                    "denominator"   = denominator,
+                    "prop_positive" = positives_prop))
+  
+}
+
+vista_long <- map_dfr(1:nrow(vista),
+                      ~ process_validation(vista$vista_id[.x],
+                                           vista$tissue[.x],
+                                           vista$tissue_positive[.x],
+                                           vista$denominator[.x])) %>% 
+  dplyr::rename(tissue.abb = tissue) %>% 
+  left_join(tissue_dict, by = "tissue.abb")
+
+write_tsv(vista_long, glue("{out}/vista_long_with_atlas_tissues.tsv"))
+
+head(vista_long)
+
+```
+
+
+
+# Exploratory plots
+
+
+```{r tissue_positive_stats, fig.width = 9, fig.height = 6}
+
+vista_long %>% 
+  filter(tissue != "none") %>% 
+  ggplot(aes(x = prop_positive)) +
+  geom_histogram(bins = 10, aes(fill = tissue.short)) +
+  scale_fill_manual(values = cmap_vista_tissue) +
+  facet_wrap(~ tissue.short) +
+  hide_legend() +
+  theme(panel.grid.major.y = element_line(),
+        panel.grid.minor.y = element_line())
+
+vista_long %>% 
+  filter(tissue != "none") %>% 
+  ggplot(aes(x = prop_positive)) +
+  geom_histogram(bins = 10, aes(fill = tissue.short)) +
+  scale_fill_manual(values = cmap_vista_tissue) +
+  facet_wrap(~ tissue, scales = "free_y") +
+  hide_legend() +
+  theme(panel.grid.major.y = element_line())
+
+vista_long %>% 
+  filter(tissue != "none") %>% 
+  ggplot(aes(x = prop_positive)) +
+  stat_ecdf(geom = "step", aes(color = tissue.short)) +
+  scale_color_manual(values = cmap_vista_tissue) +
+  facet_wrap(~ tissue.short, scales = "free_y") +
+  hide_legend()
+
+```
+
+
+```{r tissue_positive_0.3, fig.width = 8, fig.height = 8}
+
+vista_long %>% 
+  filter(tissue != "none") %>% 
+  filter(prop_positive > 0.3) %>% 
+  ggplot(aes(x = tissue)) +
+  geom_bar(aes(fill = tissue.short)) +
+  scale_fill_manual(values = cmap_vista_tissue) +
+  hide_legend() +
+  theme(panel.grid.major.y = element_line(),
+        panel.grid.minor.y = element_line()) +
+  ggtitle("# of elements positive in >30% of samples") +
+  coord_flip()
+
+
+```
+
+Figure out what's contained in the "other" tissue annotations, by looking at 
+the external notes:
+
+<details>
+
+```{r check_other}
+
+vista %>%
+  filter(grepl("other", tissue)) %>% 
+  pull(external_note) %>% 
+  table() %>% 
+  sort(decreasing = TRUE)
+
+```
+
+</details>
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

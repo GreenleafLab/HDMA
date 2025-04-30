@@ -1,0 +1,71 @@
+output_dir: "$PROJ_ROOT/output/01-preprocessing/01/Lung_b12"
+
+## Uncomment these lines to do a trial run with only two small test chunks per sublibrary
+# chunk_size: 2_000_000
+# test_chunks: 2
+chunk_size: 20_000_000
+
+genome:
+  bowtie2: $PROJ_ROOT/data/reference/bowtie2/hg38
+  star: $PROJ_ROOT/data/reference/star/
+  gene_annotation: $PROJ_ROOT/data/reference/gtf/gencode.v41.annotation.BPfiltered.gtf
+
+# Regular expressions for 1st round barcodes that should be mapped to each sample
+# Must cover all 1st round barcodes 
+# (use a dummy Undetermined sample if some 1st round barcodes are unused)
+samples:
+  T286_b12_Lung_PCW14:  "A[0-9][0-9]"
+  T132_b12_Lung_PCW21:  "B[0-9][0-9]"
+  T107_b12_Lung_PCW17: "C[0-9][0-9]"
+  T256_b12_Lung_PCW18:  "D[0-9][0-9]"
+  T408L_b12_Lung_PCW19:  "E[0-9][0-9]"
+  T226_b12_Lung_PCW21:  "F[0-9][0-9]"
+  T304_b12_Lung_PCW21:  "G[0-9][0-9]"
+  T164_b12_Lung_PCW10:  "H[0-9][0-9]"
+
+sequencing:
+  230208:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230209_A00509_0675_BHVGYYDSX5
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL81: CATTCGAT
+      CL82: GCTCTTGA
+      CL83: ACGTGGGC
+      CL84: ACCGCCCA
+      CL85: TCCAAGGG
+      CL86: ACGGTAAT
+  230224:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230224_A00509_0679_BHVCVJDSX5
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL81: CATTCGAT
+      CL82: GCTCTTGA
+      CL83: ACGTGGGC
+      CL84: ACCGCCCA
+      CL85: TCCAAGGG
+      CL86: ACGGTAAT
+      CL87: CTCGGACT
+      CL88: CAACAAGT
+  230303:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230303_A00509_0684_BHVT2HDSX5
+    tile_chunks: 20
+    RNA_I2:
+      CL81: CTACATTG
+      CL82: GGGTAGCC
+      CL83: CGGACTTT
+      CL84: CCGCGGAA
+      CL85: AAGTGCCT
+      CL86: CACTGAAG
+      CL87: CTACCGGC
+      CL88: GGATTGAA
+  230413a:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230413_A00509_0707_AH5HMLDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL87: CTCGGACT
+     
+  

@@ -1,0 +1,406 @@
+---
+title: "QC ChromBPNet models"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+proj_dir    <- here()
+doc_id      <- "03"
+out         <- here("output/03-chrombpnet/01-models/qc"); dir.create(out, recursive = TRUE)
+figout      <- here("figures/03-chrombpnet/01-models", doc_id, "/"); dir.create(figout, recursive = TRUE)
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Here we load and aggregate the QC metrics for the ChromBPNet models to evaluate them prior
+to interpretation. We set thresholds to define the set of models which will
+be used for downstream analysis.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(cowplot)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_min())
+
+```
+
+
+# Load QC and visualize
+
+Load general cluster info (number of fragments, number of cells):
+
+```{r}
+
+# get number of cells
+cluster_meta <- read_csv(here("output/05-misc/03/TableS2_cluster_meta_qc.csv"))
+
+# get number of fragments
+n_frags <- read_tsv(here("output/01-preprocessing/03/fragmentsPerCluster.tsv")) %>% 
+  dplyr::rename(total_frags = total_reads)
+
+# put these together
+cluster_meta <- cluster_meta %>% 
+  left_join(n_frags, by = c("Cluster" = "RNA_Clusters")) %>% 
+  # in the ChromBPNet analyses, StomachEsophagus is referred to as Stomach
+  mutate(organ = ifelse(organ == "StomachEsophagus", "Stomach", organ))
+
+sorted_cluster_order <- cluster_meta %>% arrange(organ, cluster_id) %>% pull(Cluster_ChromBPNet)
+
+```
+
+
+Then, we load the various ChromBPNet QC metrics:
+
+```{r load}
+
+bias_model <- "Heart_c0_thresh0.4"
+model_dir  <- here("output/03-chrombpnet/01-models/models/", paste0("bias_", bias_model))
+fs::dir_exists(model_dir)
+
+metrics    <- fs::dir_ls(model_dir, glob = "*/*/evaluation/chrombpnet_metrics.json", recurse = TRUE, type = "file")
+
+# extract out cell type and fold from the path
+clusters   <- stringr::str_split(metrics, "/") %>% sapply(getElement, 14)
+folds      <- stringr::str_split(metrics, "/") %>% sapply(getElement, 15)
+
+# load the response of the bias model
+bias_resp  <- fs::dir_ls(model_dir, glob = "*/*/evaluation/chrombpnet_nobias_max_bias_response.txt",
+                         recurse = TRUE, type = "file")
+
+# loop over model performance metrics and read them in
+chrombpnet_metrics <- pmap_dfr(list(metrics, clusters, folds),
+                               ~ jsonlite::fromJSON(..1) %>%
+                                 as.data.frame() %>% 
+                                 tibble::add_column("Cluster" = ..2, .before = 1) %>% 
+                                 tibble::add_column("Fold" = ..3, .after = 1))
+
+# get tn5 motif response
+read_bias <- function(response_file) {
+  
+  responses <- read_lines(response_file) %>% str_split("_") %>% .[[1]] %>% getElement(3) %>% str_split("/") %>% .[[1]]
+  data.frame("tn5_motif" = paste0("tn5_motif_", 1:5),
+             "response" = responses) %>% 
+    pivot_wider(names_from = "tn5_motif", values_from = "response") %>% 
+    mutate(Cluster = response_file %>% str_split("/") %>% .[[1]] %>% getElement(14),
+           Fold = response_file %>% str_split("/") %>% .[[1]] %>% getElement(15))
+  
+}
+
+bias_metrics <- map_dfr(bias_resp, read_bias)
+
+```
+
+
+Put all metrics together:
+
+```{r}
+
+all_metrics <- right_join(cluster_meta, chrombpnet_metrics, by = c("Cluster_ChromBPNet" = "Cluster")) %>% 
+  left_join(bias_metrics, by = c("Cluster_ChromBPNet" = "Cluster", "Fold" = "Fold")) %>% 
+  mutate(Model = paste0(Cluster_ChromBPNet, "_", Fold)) %>% 
+  dplyr::relocate(Model, .before = 1) %>% 
+  arrange(organ, L1_annot) %>% 
+  rowwise() %>% 
+  mutate(max_tn5_response = max(tn5_motif_1, tn5_motif_2, tn5_motif_3, tn5_motif_4, tn5_motif_5))
+
+head(all_metrics)
+
+```
+
+
+Sanity checks:
+
+```{r}
+
+n_clusters <- 203
+length(unique(all_metrics$Model)) == 5 * n_clusters
+length(unique(all_metrics$Cluster)) == n_clusters
+length(unique(all_metrics$organ)) == 12
+
+```
+
+Filter out cell types where any of the folds has < 0.5 Spearman counts correlation.
+
+```{r}
+
+celltypes_drop <- all_metrics %>%
+  filter(counts_metrics.peaks.spearmanr < 0.5) %>% 
+  pull(Cluster) %>% 
+  unique()
+celltypes_drop
+
+all_metrics <- all_metrics %>% 
+  mutate(Keep_cluster = ifelse(Cluster %in% celltypes_drop, FALSE, TRUE),
+         Keep_fold    = case_when(
+           Cluster %in% celltypes_drop ~ FALSE,
+           TRUE ~ TRUE
+         ))
+
+models_to_keep <- all_metrics %>%
+  dplyr::select(Model, Cluster_ChromBPNet, Cluster, Fold, Keep_cluster, Keep_fold) %>%
+  group_by(Cluster_ChromBPNet, Cluster) %>%
+  mutate(Keep_cluster = ifelse(all(Keep_cluster), TRUE, FALSE)) %>%
+  filter(Keep_fold) %>%
+  summarize(Folds_to_keep = glue_collapse(Fold, ",")) %>% 
+  relocate(Cluster, .after = Folds_to_keep)
+
+models_to_keep %>% write_tsv(glue("{out}/chrombpnet_models_keep.tsv"), col_names = FALSE)
+
+nrow(models_to_keep)
+
+```
+
+Thus, at this stage, we're keeping 199 models.
+
+Prepare supplementary table:
+
+```{r table}
+
+all_metrics %>% 
+  dplyr::select(organ, Cluster_ChromBPNet, L1_annot, number_of_cells = ncell, total_frags, Model, Fold, matches("metrics"), matches("tn5")) %>% 
+  write_tsv(glue("{out}/chrombpnet_metrics.tsv"))
+
+```
+
+
+Correlation on the counts task:
+
+```{r}
+
+summary(all_metrics$counts_metrics.peaks.pearsonr)
+summary(all_metrics$counts_metrics.peaks.spearmanr)
+summary(all_metrics$profile_metrics.peaks.median_jsd)
+
+```
+
+
+
+```{r chrombpnet_qc_metrics_barplots, fig.width = 30, fig.height = 15}
+
+cluster_meta <- cluster_meta %>% 
+  mutate(Cluster_ChromBPNet = factor(Cluster_ChromBPNet, levels = sorted_cluster_order))
+
+all_metrics_avg <- all_metrics %>% 
+  group_by(Cluster_ChromBPNet, Cluster, dend_order, organ) %>% 
+  summarize_at(.vars = vars(counts_metrics.peaks.pearsonr, counts_metrics.peaks.spearmanr, profile_metrics.peaks.median_jsd), .funs = mean) %>% 
+  gather(stat, value, counts_metrics.peaks.pearsonr, counts_metrics.peaks.spearmanr, profile_metrics.peaks.median_jsd)
+
+all_metrics_long <- all_metrics %>%
+  gather(stat, value, counts_metrics.peaks.pearsonr, counts_metrics.peaks.spearmanr, profile_metrics.peaks.median_jsd)
+
+p1 <- cluster_meta %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = total_frags)) +
+  geom_bar(aes(fill = organ), stat = "identity") +
+  geom_hline(yintercept = c(5e6), color = "black", linetype = "dashed") +
+  scale_fill_manual(values = cmap_organ) +
+  # put the scale on a log10 scale, but use non-logged numbers
+  scale_y_log10(label = comma) +
+  coord_cartesian(ylim = c(1e5, NA)) +
+  facet_grid(. ~ organ, scales = "free_x", space = "free") +
+  rotate_x() + no_legend() +
+  theme(axis.text.x = element_blank(),
+        panel.grid.major.y = element_line(color = "gray90")) +
+  xlab(NULL) + ylab("Total # fragments") +
+  ggtitle("ChromBPNet model performance")
+
+p2 <- cluster_meta %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = ncell)) +
+  geom_bar(aes(fill = organ), stat = "identity") +
+  scale_fill_manual(values = cmap_organ) +
+  # put the scale on a log10 scale, but use non-logged numbers
+  scale_y_log10(label = comma) +
+  facet_grid(. ~ organ, scales = "free_x", space = "free") +
+  rotate_x() + no_legend() +
+  theme(axis.text.x = element_blank(),
+        strip.text.x = element_blank(),
+        panel.grid.major.y = element_line(color = "gray90")) +
+  xlab(NULL) + ylab("# cells")
+
+p3 <- all_metrics_avg %>% 
+  mutate(Cluster_ChromBPNet = factor(Cluster_ChromBPNet, levels = sorted_cluster_order)) %>% 
+  filter(stat %in% c("counts_metrics.peaks.pearsonr")) %>% 
+  mutate(stat = recode(stat, counts_metrics.peaks.spearmanr = "SpearmanR", counts_metrics.peaks.pearsonr = "PearsonR")) %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = value)) +
+  geom_bar(aes(fill = organ), stat = "identity") +
+  geom_point(data = all_metrics_long %>%
+               filter(stat %in% c("counts_metrics.peaks.pearsonr")) %>% 
+               mutate(stat = recode(stat, counts_metrics.peaks.spearmanr = "SpearmanR", counts_metrics.peaks.pearsonr = "PearsonR")), 
+             aes(x = Cluster_ChromBPNet, y = value), shape = 21, size = 0.5) +
+  scale_fill_manual(values = cmap_organ) +
+  # geom_text(aes(label = round(value, 2), y = 0.88), size = 2, angle = 90) +
+  facet_grid(. ~ organ, scales = "free_x", space = "free") +
+  rotate_x() +
+  scale_y_continuous(breaks = seq(0.3, 0.9, 0.1)) +
+  coord_cartesian(ylim = c(0.3, 0.9)) +
+  ylab("Correlation between predicted / observed counts") + no_legend() +
+  theme(strip.text.x = element_blank(),
+        panel.grid.major.y = element_line(color = "gray90"))
+
+p4 <- all_metrics_avg %>% 
+  mutate(Cluster_ChromBPNet = factor(Cluster_ChromBPNet, levels = sorted_cluster_order)) %>% 
+  filter(stat %in% c("profile_metrics.peaks.median_jsd")) %>%
+  mutate(stat = "Median JSD") %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = value)) +
+  geom_bar(aes(fill = organ), stat = "identity") +
+  geom_point(data = all_metrics_long %>%
+               filter(stat %in% c("profile_metrics.peaks.median_jsd")) %>% 
+               mutate(stat = "Median JSD"),
+             aes(x = Cluster_ChromBPNet, y = value), shape = 21, size = 0.5) +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(stat ~ organ, scales = "free_x", space = "free") +
+  rotate_x() +
+  coord_cartesian(ylim = c(0.3, 0.85)) +
+  scale_y_continuous(breaks = seq(0.3, 0.85, 0.1)) +
+  ylab("Median JSD between observed / predicted profiles") + no_legend() +
+  theme(strip.text.x = element_blank(),
+        panel.grid.major.y = element_line(color = "gray90")) +
+  xlab("Cluster")
+
+plot_grid(p1, p2, p3 + theme(axis.text.x = element_blank()) + xlab(NULL),
+          p4, ncol = 1, rel_heights = c(1.5, 1, 1, 2), align = "v", axis = "rl")
+
+```
+
+
+Plot response to Tn5 motifs:
+
+```{r model_tn5_response, fig.width = 30, fig.height = 11}
+
+all_metrics %>% 
+  mutate(Cluster_ChromBPNet = factor(Cluster_ChromBPNet, levels = sorted_cluster_order)) %>% 
+  dplyr::select(Cluster_ChromBPNet, organ, Fold, matches("tn5_motif")) %>% 
+  gather(Tn5_motif, Response, matches("tn5_motif")) %>% 
+  mutate(Response = as.numeric(Response),
+         Response = ifelse(Response > 0.01, 0.01, Response)) %>% 
+  ggplot(aes(x = Cluster_ChromBPNet, y = Response)) +
+  geom_hline(yintercept = 0.003, color = "gray90") +
+  geom_jitter(stat = "identity", aes(color = organ, shape = Fold), width = 0.1, alpha = 0.8) +
+  scale_y_continuous(breaks = seq(0.001, 0.01, 0.002)) +
+  facet_grid(Tn5_motif ~ organ, scales = "free_x", space = "free") +
+  scale_color_manual(values = cmap_organ) + 
+  rotate_x() +
+  ggtitle("ChromBPNet Tn5 motif response, plotting capped at 0.01") +
+  coord_cartesian(ylim = c(0, 0.01))
+
+```
+
+Distribution of metrics (mean across folds) per cell type:
+
+```{r metrics_distributions, fig.width = 9, fig.height = 6}
+
+p1 <- all_metrics_avg %>%
+  filter(stat == "counts_metrics.peaks.pearsonr") %>%
+  ggplot(aes(x = 1, y = value)) +
+  geom_boxplot(outlier.colour = NA, fill = "gray90") +
+  geom_jitter(fill = "#3953A4", width = 0.25,
+              shape = 21, size = 3, alpha = 0.9) +
+  theme(
+    panel.grid.major.y = element_line(),
+    panel.grid.minor.y = element_line(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank()) +
+  ggtitle("Pearson R") + ylab("Value") + xlab(NULL)
+
+p2 <- all_metrics_avg %>%
+  filter(stat == "counts_metrics.peaks.spearmanr") %>%
+  ggplot(aes(x = 1, y = value)) +
+  geom_boxplot(outlier.colour = NA, fill = "gray90") +
+  geom_jitter(fill = "#3953A4", width = 0.25,
+              shape = 21, size = 3, alpha = 0.9) +
+  theme(
+    panel.grid.major.y = element_line(),
+    panel.grid.minor.y = element_line(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank()) +
+  ggtitle("Spearman R") + ylab("Value") + xlab(NULL)
+
+p3 <- all_metrics_avg %>%
+  filter(stat == "profile_metrics.peaks.median_jsd") %>%
+  ggplot(aes(x = 1, y = value)) +
+  geom_boxplot(outlier.colour = NA, fill = "gray90") +
+  geom_jitter(fill = "#3953A4", width = 0.25,
+              shape = 21, size = 3, alpha = 0.9) +
+  theme(
+    panel.grid.major.y = element_line(),
+    panel.grid.minor.y = element_line(),
+    axis.ticks.x = element_blank(),
+    axis.text.x = element_blank()) +
+  ggtitle("Median JSD") + ylab("Value") + xlab(NULL)
+
+plot_grid(p1, p2, p3, nrow = 1)
+
+```
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

@@ -1,0 +1,313 @@
+---
+title: "Visualization of context-specific cooperativity"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+doc_id <- "05b"
+figout <- here("figures/03-chrombpnet/03-syntax/", doc_id, "/"); dir.create(figout, recursive = TRUE)
+out    <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      out.width = '100%', # some interactive figures won't stretch if this is not set
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 2000)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+For specific examples of composite motifs with predicted synergy, we examine the context-specificity
+of this synergy by running *in silico* marginalizations for the motif pair at 
+their optimal syntax for every cell type, and then compare predicted effects
+with expression levels of TFs that may bind these sites.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(ggrepel)
+library(cowplot)
+library(pheatmap)
+library(ggseqlogo)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "chrombpnet_utils.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+
+
+# Load data
+
+
+
+## Cluster metadata
+
+```{r load_cluster_meta}
+
+cluster_meta <- read_csv(here("output/05-misc/03/TableS2_cluster_meta_qc.csv"))
+
+chrombpnet_models_keep <- read_tsv(here("output/03-chrombpnet/01-models/qc/chrombpnet_models_keep2.tsv"),
+                                   col_names = c("Cluster", "Folds_keep", "Cluster_ID"))
+
+cluster_order <- cluster_meta %>% arrange(organ, L1_annot) %>% pull(Cluster_ChromBPNet)
+organs <- unique(cluster_meta$organ) %>% sort()
+organs[organs == "StomachEsophagus"] <- "Stomach"
+
+head(chrombpnet_models_keep)
+
+```
+
+
+
+## Composite test results
+
+```{r}
+
+all_results <- read_tsv(here("output/03-chrombpnet/03-syntax/04c/composite_motif_ISM_results.tsv"))
+
+```
+
+
+## In silico marginalization results
+
+```{r}
+
+ism_dir <- here("output/03-chrombpnet/03-syntax/05a/in_silico_marginalization/")
+
+```
+
+
+## TF expression per cluster
+
+```{r}
+
+all_gex_decontx.mean <- readRDS(here("output/02-global_analysis/04/tf_gex_decontx.mean.rds"))
+all_gex_decontx.detection <- readRDS(here("output/02-global_analysis/04/tf_gex_decontx.detectionrate.rds"))
+
+```
+
+
+Wrangle into a dataframe for bubble plots:
+
+```{r}
+
+meanexp_scaled_decontx <- all_gex_decontx.mean %>% 
+  tibble::column_to_rownames(var = "cluster") %>% 
+  apply(2, scales::rescale) %>%
+  data.frame() %>%
+  tibble::rownames_to_column(var = "cluster") %>%
+  gather(TF, Expression, 2:ncol(.))
+
+# see without scaling?
+# meanexp_scaled_decontx <- all_gex_decontx.mean %>%
+#   gather(TF, Expression, 2:ncol(.))
+
+pct1_decontx <- all_gex_decontx.detection %>% 
+  gather(TF, Pct1, 2:ncol(.))
+
+max(pct1_decontx$Pct1, na.rm = TRUE)
+
+bubbleplot_data_decontx <- left_join(meanexp_scaled_decontx, pct1_decontx, by = c("cluster", "TF")) %>%
+  # NOTE: filter to observations where a gene is detected in at least 1% of cells
+  filter(Pct1 > 0) %>% 
+  left_join(cluster_meta, by = c("cluster" = "Cluster")) %>% 
+  filter(cluster %in% cluster_meta$Cluster) %>% 
+  replace_na(list(Expression = 0, Pct1 = 0)) %>% 
+  dplyr::select(L1_annot, TF, Expression, Pct1)
+
+```
+
+
+# Plots per motif
+
+Helper function:
+
+<details>
+
+```{r}
+
+cluster_meta_subset <- cluster_meta %>% dplyr::select(Cluster_ChromBPNet, L1_annot, organ)
+
+plot_motif_across_celltypes <- function(motif, filter_statement, tf_rel_width = 1, top_n = 40) {
+  
+  # motif <- "255|FOX_NR:HNF4A/HNF4G"
+  
+  comp_motif_name <- motif
+  comp_motif_name_safe <- gsub("\\/|\\|", ".", comp_motif_name)
+  
+  agg_results <- read_tsv(file.path(ism_dir, comp_motif_name_safe, "aggregated_results.tsv")) %>% 
+    left_join(cluster_meta_subset, by = c("cluster" = "Cluster_ChromBPNet"))
+  
+  agg_preds_diff <- read_tsv(file.path(ism_dir, comp_motif_name_safe, "aggregated_mean_profile_predictions_diff.tsv"))
+  
+  cluster_order <- agg_results %>% slice_max(order_by = effect_mean, n = 30) %>% pull(L1_annot) %>% rev()
+  
+  # fold changes
+  p2 <- agg_results %>% 
+    filter(L1_annot %in% cluster_order) %>% 
+    mutate(L1_annot = factor(L1_annot, levels = cluster_order)) %>% 
+    mutate(effect_lower = effect_mean - effect_sd,
+           effect_upper = effect_mean + effect_sd) %>% 
+    ggplot(aes(x = L1_annot, y = effect_mean)) +
+    geom_bar(aes(fill = organ), stat = "identity") +
+    geom_errorbar(aes(ymin = effect_lower, ymax = effect_upper)) +
+    geom_hline(yintercept = log2(1.5), linetype = "dashed") +
+    scale_fill_manual(values = cmap_organ) +
+    guides(fill = guide_legend(ncol = 2)) +
+    xlab(NULL) + ylab("Mean effect") +
+    coord_flip() +
+    theme(axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          legend.position = "bottom") +
+    ggtitle("effect (log counts)")
+  
+  # heatmap of profile predictions (difference between edited and background)
+  p1 <- agg_preds_diff %>% 
+    gather(position, value, 2:ncol(.)) %>%
+    dplyr::rename(cluster = index) %>% 
+    left_join(cluster_meta_subset, by = c("cluster" = "Cluster_ChromBPNet")) %>% 
+    filter(L1_annot %in% cluster_order) %>% 
+    mutate(L1_annot = factor(L1_annot, levels = cluster_order),
+           position = as.numeric(position)) %>% 
+    ggplot(aes(x = position, y = L1_annot)) +
+    geom_tile(aes(fill = value)) +
+    theme(legend.position = "bottom",
+          axis.text.y = element_text(size = 10)) + #, color = rev(cluster_meta$Color))) +
+    scale_x_continuous(breaks = seq(0, 1000, by = 100),
+                       labels = seq(-500, 500, by = 100)) +
+    scale_fill_gradientn(colors = ylrd) +
+    xlab("Genomic position (bp)") +
+    ggtitle(glue("{comp_motif_name} \npredicted profile "))
+  
+  p3 <- bubbleplot_data_decontx %>%
+    filter(eval(rlang::parse_expr(filter_statement))) %>% 
+    filter(L1_annot %in% cluster_order) %>%
+    mutate(L1_annot = factor(L1_annot, levels = cluster_order)) %>% 
+    ggplot(aes(y = L1_annot, x = TF)) +
+    geom_point(aes(size = Pct1, color = Expression), alpha = 0.8) +
+    scale_radius(limits = c(0, 1), range = c(1, 5)) +
+    rotate_x() +
+    # use the RNA color map without the darkest colors
+    scale_color_gradientn(colors = whrd) +
+    # scale_color_gradient(low = "white", high = "red") +
+    ylab(NULL) + xlab(NULL) +
+    theme(panel.grid.major = element_line(colour = "grey90", linewidth = 0.2),
+          # panel.border = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.ticks.x = element_blank(),
+          axis.text.x = element_text(angle = 70, vjust = 0.5, hjust = 0),
+          axis.text.y = element_blank(),
+          legend.position = "bottom") +
+    ggtitle("TF expression") +
+    scale_x_discrete(position = "top")
+  
+  plot_grid(p1, p2, p3, nrow = 1, align = "h", axis = "tb", rel_widths = c(1.5, 1, tf_rel_width))
+  
+}
+
+```
+
+</details>
+
+
+## 255|FOX_NR:HNF4A/HNF4G
+
+```{r fox_hnf4_example, fig.width = 13, fig.height = 8}
+
+plot_motif_across_celltypes(motif = "255|FOX_NR:HNF4A/HNF4G",
+                            filter_statement = 'grepl("FOX", TF) | grepl("HNF4", TF)',
+                            tf_rel_width = 2)
+
+```
+
+
+
+
+## 339|IKZF1_RUNX
+
+```{r ikzf1_runx_example, fig.width = 10, fig.height = 8}
+
+plot_motif_across_celltypes(motif = "339|IKZF1_RUNX",
+                            filter_statement = 'grepl("IKZF", TF) | grepl("RUNX", TF)',
+                            tf_rel_width = 0.8)
+
+```
+
+
+# Validation in other datasets
+
+
+Datasets to consider for validation:
+
+- https://cells.ucsc.edu/?ds=fetal-liver+liver&gene=FOXA3
+- https://cells.ucsc.edu/?ds=fetal-thymus+all&gene=RUNX3
+
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

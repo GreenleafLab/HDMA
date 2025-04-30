@@ -1,0 +1,564 @@
+---
+title: "07 - Overlap ENCODE with HDMA acCREs"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/07" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+script_path <- here::here("code/utils/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Analysis:
+
+- We got ENCODE cCREs
+- Calculate overlaps between our developmental peaks & each ENCODE list
+
+From ENCODE [SCREEN resource](https://screen.encodeproject.org/index/cversions):
+ENCODE V4 cCRE descriptions: https://screen.wenglab.org/about 
+
+> Classification of cCREs
+Many uses of cCREs are based on the regulatory role associated with their biochemical signatures. Thus, we putatively defined cCREs in one of the following annotation groups based on each element’s dominant biochemical signals across all available biosamples. Analogous to GENCODE's catalog of genes, which are defined irrespective of their varying expression levels and alternative transcripts across different cell types, we provide a general, cell type-agnostic classification of cCREs based on the max-Zs as well as its proximity to the nearest annotated TSS:
+
+1. Promoter-like signatures (PLS): 1) fall within 200 bp (center to center) of an annotated GENCODE TSS or experimentally derived TSS and 2) have high chromatin accessibility (either DNase or ATAC) and H3K4me3 signals.
+
+2. Enhancer-like signatures (ELS) have high chromatin accessibility and H3K27ac signals. If they are within 200 bp of a TSS they must also have low H3K4me3 signal. The subset of the enhancers within 2 kb of a TSS are denoted as TSS proximal (pELS), while the remaining subset is denoted TSS distal (dELS).
+
+3. Chromatin accessibility + H3K4me3 (CA-H3K4me3) have high chromatin accessibility and H3K4me3 signals, low H3K27ac signals and do not fall within 200 bp of a TSS.
+
+4. Chromatin accessibility + CTCF (CA-CTCF) have high chromatin accessibility and CTCF signals, low H3K4me3 and H3K27ac signals.
+
+5. Chromatin accessibility + transcription factor (CA-TF) have high chromatin accessibility, low H3K4me3 H3K27ac, and CTCF signals, and overlap a transcription factor cluster.
+
+6. Chromatin accessibility (CA) have high chromatin accessibility, and low H3K4me3, H3K27ac, and CTCF signals.
+
+7. Transcription factor (TF) have low chromatin accessibility, H3K4me3, H3K27ac, and CTCF signals and overlap a transcription factor cluster.
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(cowplot)
+library(GenomicRanges)
+library(rtracklayer)
+
+# shared project scripts/functions
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+
+```
+
+
+# Load cluster metadata
+
+```{r}
+
+cluster_meta <- read_tsv(here::here("output/02-global_analysis/02/cluster_metadata_dend_order.tsv"))
+
+```
+
+
+
+# Load global peakset
+
+```{r load_peaks}
+
+# load peaks and convert to granges
+peaks <- readRDS(here::here("output/04-enhancers/01/peaks_all_df_annots.rds"))
+peaks_gr <- makeGRangesFromDataFrame(peaks, ignore.strand = TRUE, keep.extra.columns = TRUE)
+
+rtracklayer::export.bed(peaks_gr, con = file.path(out, "atlas_peaks_all.bed"), format = "BED")
+
+# how many peaks?
+length(peaks_gr)
+
+# all same length
+all(width(peaks_gr) == 501)
+
+cmap_anno <- cmap_peaktype
+
+```
+
+
+
+# Load ENCODE cREs
+
+Note: GRanges is 1-based while BED is 0-based:
+
+```
+$ head GRCh38-cCREs.bed
+chr1	104896	105048	EH38D4327509	EH38E2776520	CTCF-only,CTCF-bound
+chr1	138866	139134	EH38D4327520	EH38E2776521	pELS,CTCF-bound
+chr1	181289	181639	EH38D4327525	EH38E2776524	DNase-H3K4me3,CTCF-bound
+chr1	267925	268171	EH38D4327544	EH38E2776528	CTCF-only,CTCF-bound
+chr1	586036	586264	EH38D4327554	EH38E2776532	CTCF-only,CTCF-bound
+chr1	605330	605668	EH38D4327560	EH38E2776534	dELS
+chr1	727121	727350	EH38D4327570	EH38E2776536	dELS
+chr1	778570	778919	EH38D4327580	EH38E2776539	PLS,CTCF-bound
+chr1	779026	779180	EH38D4327581	EH38E2776540	PLS,CTCF-bound
+chr1	779222	779432	EH38D4327582	EH38E2776541	pELS,CTCF-bound
+
+```
+
+```{r load_encode} 
+
+encode_cCREs_paths <- list.files(path = here::here("output/04-enhancers/07/ENCODE"), full.names = TRUE)
+encode_cCREs <- map(encode_cCREs_paths,
+                    ~ rtracklayer::import(.x, format = "BED",
+                                          extraCols = c("Accession1" = "character", "Accession2" = "character", "Annotation" = "character")))
+names(encode_cCREs) <- gsub("GRCh38-", "", gsub(".bed", "", basename(encode_cCREs_paths)))
+
+map(encode_cCREs, length)
+
+map(encode_cCREs, ~ .x$Annotation %>% unique())
+
+head(encode_cCREs$cCREs)
+
+```
+
+How many in each set:
+
+```{r encode_cCREs_breakdown, fig.width = 7, fig.height = 4}
+
+p <- data.frame(Set = names(encode_cCREs),
+           N_elements = map_dbl(encode_cCREs, length)) %>% 
+  mutate(Set = gsub("cCREs.", "", Set)) %>% 
+  ggplot(aes(x = Set, y = N_elements)) +
+  geom_col() +
+  scale_y_continuous(label = scales::comma, limits = c(0, 2600000)) +
+  ggtitle("# of ENCODE V4 cCREs") +
+  geom_text(aes(label = N_elements), vjust = -1) +
+  theme(axis.text.x = element_text(angle=90, hjust=1))
+p
+# ggsave(plot=p, filename=paste0(figout, "encode_cCREs_breakdown.pdf"), width=7, height=5) # if not knitting
+```
+
+
+
+# Calculate overlaps:
+
+Here, we calculate overlap between atlas peaks and ENCODE cCREs.
+
+```{r annotate_peaks}
+#' Update peaks_gr metadata columns based on overlaps with other region lists
+#'
+#' @param query GRanges, the query ranges in which to look for overlaps with \code{subject}.
+#' @param subject GRanges, the subject ranges.
+#' @param key character, used to name the new column in query
+#' @param min_subject_overalp numeric, percentage of query region required for considering
+#' two ranges overlapping.
+get_overlaps <- function(query, subject, key, min_subject_overlap) {
+  
+  # get overlap in basepairs, given that query peaks are 501bp
+  min_overlap_bp <- min_subject_overlap * 501
+  
+  # find overlaps between peaks and ENCODE cCREs
+  olap_idx <- GenomicRanges::findOverlaps(query, subject = subject, minoverlap = min_overlap_bp)
+  peaks_idx <- queryHits(olap_idx)
+  annos_per_peaks_idx <- subject$Annotation[subjectHits(olap_idx)]
+  
+  print(length(olap_idx))
+  
+  # count the number of times each peak index appears (i.e., the number of overlaps per peak)
+  overlap_counts <- table(peaks_idx) %>% enframe(name = "peak_idx", value = "n_overlaps")
+  
+  # create a dataframe to hold the overlap counts for each query, initialize with "0" (no overlaps)
+  anno_df <- data.frame(
+    peak_idx = as.character(seq_along(query)),
+    Olaps = rep(0, length(query))) %>% 
+    left_join(overlap_counts, by = "peak_idx") %>%
+    mutate(Olaps = ifelse(!is.na(n_overlaps), n_overlaps, Olaps)) %>%
+    dplyr::select(peak_idx, Olaps)
+  
+  if (!all(anno_df$peak_idx == as.character(seq_along(query)))) {
+    stop("Peak indices are not equal.")
+  }
+  
+  anno_df <- anno_df %>% dplyr::select(Olaps)
+  anno_df$Olaps <- as.numeric(anno_df$Olaps)
+  colnames(anno_df) <- paste0("Overlap_", key)
+  
+  return(anno_df)
+  
+}
+
+peaks_anno_0.1 <- imap_dfc(encode_cCREs, ~ get_overlaps(query = peaks_gr, subject = .x, key = .y, min_subject_overlap = 0.1)) %>% mutate(Percent_overlap = 0.1)
+peaks_anno_0.5 <- imap_dfc(encode_cCREs, ~ get_overlaps(query = peaks_gr, subject = .x, key = .y, min_subject_overlap = 0.5)) %>% mutate(Percent_overlap = 0.5)
+
+head(peaks_anno_0.1)
+nrow(peaks_anno_0.5)
+
+```
+
+Also compute the reverse, i.e. which of the ENCODE elements overlap with atlas elements?
+
+```{r annotate_cCREs}
+
+cCREs_anno_0.1 <- imap_dfr(encode_cCREs, ~ get_overlaps(query = .x, subject = peaks_gr, key = .y, min_subject_overlap = 0.1) %>% set_colnames("Overlap") %>% mutate(ENCODE_set = .y)) %>% mutate(Percent_overlap = 0.1)
+cCREs_anno_0.5 <- imap_dfr(encode_cCREs, ~ get_overlaps(query = .x, subject = peaks_gr, key = .y, min_subject_overlap = 0.5) %>% set_colnames("Overlap") %>% mutate(ENCODE_set = .y)) %>% mutate(Percent_overlap = 0.5)
+
+```
+
+
+# Visualize
+
+```{r barplot_peaks_encode_overlap, fig.width = 10, fig.height = 9}
+
+peaks_anno_long <- bind_rows(data.frame(peaks_anno_0.1),
+                             data.frame(peaks_anno_0.5)) %>% 
+  dplyr::select(Percent_overlap, matches("Overlap_")) %>% 
+  # convert to long/tidy format
+  gather(ENCODE_set, Status, 2:ncol(.)) %>% 
+  # convert to binary
+  mutate(Status = case_when(
+    Status == 0 ~ "None",
+    Status == 1 ~ "1",
+    Status > 1   ~ ">1"))
+
+# make a palette that encodes both the cCRE type and the status in terms of # overlaps
+palette_encode_status <- base::expand.grid(unique(peaks_anno_long$ENCODE_set), unique(peaks_anno_long$Status)) %>% 
+  mutate(Var1 = gsub("\\.", "-", gsub("cCREs.", "", gsub("Overlap_", "", Var1)))) %>% 
+  rowwise() %>% 
+  mutate(Color = case_when(
+    Var2 == "None" ~ "gray90",
+    Var2 == "1" ~ "gray50",
+    Var2 == ">1" ~ 'black')) %>% 
+  mutate(Key = paste0(Var1, "_", Var2)) %>% 
+  dplyr::select(Key, Color) %>% 
+  tibble::deframe()
+
+palette_encode_status
+
+p1 <- peaks_anno_long %>% 
+  mutate(ENCODE_set = gsub("\\.", "-", gsub("cCREs.", "", gsub("Overlap_", "", ENCODE_set))),
+         ENCODE_status = paste0(ENCODE_set, "_", Status)) %>% 
+  ggplot(aes(x = ENCODE_set)) +
+  geom_bar(aes(fill = ENCODE_status)) +
+  scale_fill_manual(values = palette_encode_status) +
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(~ Percent_overlap) +
+  xlab("ENCODE V4 cCRE set") + ylab("# of atlas peaks") +
+  ggtitle("Atlas peaks which overlap with \nENCODE candidate cis-regulatory elements") +
+  theme(strip.background = element_blank()) +
+  rotate_x()
+
+p2 <- bind_rows(cCREs_anno_0.1, cCREs_anno_0.5) %>% 
+  mutate(Status = case_when( # convert to binary
+    Overlap == 0 ~ "None",
+    Overlap == 1 ~ "1",
+    Overlap > 1   ~ ">1")) %>% 
+  mutate(ENCODE_set = gsub("\\.", "-", gsub("cCREs.", "", gsub("Overlap_", "", ENCODE_set))),
+         ENCODE_status = paste0(ENCODE_set, "_", Status)) %>% 
+  ggplot(aes(x = ENCODE_set)) +
+  geom_bar(aes(fill = ENCODE_status)) +
+  scale_fill_manual(values = palette_encode_status) +
+  scale_y_continuous(labels = scales::comma) +
+  facet_wrap(~ Percent_overlap) +
+  xlab("ENCODE V4 cCRE set") + ylab("# of ENCODE cCREs") +
+  ggtitle("ENCODE candidate cis-regulatory \nelements which overlap with atlas peaks") +
+  theme(strip.background = element_blank()) +
+  rotate_x()
+
+p <- plot_grid(p1, p2, nrow = 2, align = "v", axis = "rl")
+p
+# ggsave(plot=p, filename = paste0(figout, "barplot_peaks_encode_overlap.pdf"), width = 10, height = 9)
+```
+
+
+
+# Explore overlapping/non-overlapping peaks
+
+```{r add_to_pks}
+
+peaks_anno_0.1 <- peaks_anno_0.1 %>% 
+  tibble::add_column(peak_name = mcols(peaks_gr)$peak_name, .before = 1)
+colnames(peaks_anno_0.1) <- gsub("Overlap_", "Overlap_ENCODE_", colnames(peaks_anno_0.1))
+
+head(peaks_anno_0.1)
+
+readr::write_tsv(peaks_anno_0.1, file.path(out, "peaks_annotated_ENCODE_cCREs.tsv"))
+readr::write_tsv(cCREs_anno_0.1, file.path(out, "ENCODE_cCREs_overlap_peaks.tsv"))
+
+
+# and to the granges object
+# first, sanity check
+all(peaks_anno_0.1$peak_name == mcols(peaks_gr)$peak_name)
+mcols(peaks_gr)$Overlap_ENCODE_cCREs <- peaks_anno_0.1$Overlap_ENCODE_cCREs
+
+```
+
+
+
+How do some of the metrics on the called peaks vary based on whether they
+overlap with an ENCDOE cCRE?
+
+```{r qc_per_overlap_status, fig.width = 10, fig.height = 5}
+
+p1 <- mcols(peaks_gr) %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = as.factor(Overlap_ENCODE_cCREs), y = score)) +
+  geom_boxplot(outlier.shape = NA)  +
+  coord_cartesian(ylim = c(0, 30)) + 
+  ggtitle("Peak score")
+
+p2 <- mcols(peaks_gr) %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = as.factor(Overlap_ENCODE_cCREs), y = Reproducibility)) +
+  geom_boxplot(outlier.shape = NA)  +
+  coord_cartesian(ylim = c(0, 5)) +
+  ggtitle("Peak reproducibility")
+
+p <- plot_grid(p1, p2, nrow = 1)
+p
+# ggsave(plot=p, filename = paste0(figout, "qc_per_overlap_status.pdf"), width = 10, height = 5)
+```
+
+
+What are the peaks that don't overlap with any ENCODE peaks?
+
+```{r peaks_no_olap_breakdown, fig.width = 4, fig.height = 7}
+
+p <- peaks_gr[peaks_gr$Overlap_ENCODE_cCREs == 0, ] %>% 
+  mcols() %>% 
+  as.data.frame() %>% 
+  ggplot(aes(x = "1")) +
+  geom_bar(aes(fill = peakType), position = "stack") +
+  scale_fill_manual(values = cmap_anno) +
+  scale_y_continuous(labels = scales::comma)
+p
+# ggsave(plot=p, filename = paste0(figout, "peaks_no_olap_breakdown.pdf"), width = 4, height = 7)
+```
+
+
+What cell types to they come from?
+
+```{r peak_breakdown_by_celltype, fig.width = 18, fig.height = 12}
+
+peaks_df <- peaks_gr %>% 
+  mcols() %>% 
+  as.data.frame() %>% 
+  separate(GroupReplicate, sep = "\\._\\.", into = c("Cluster", "Sample")) %>% 
+  left_join(cluster_meta, by = "Cluster")
+
+cluster_order_lex <- cluster_meta %>% arrange(organ, L1_clusterID) %>% pull(Cluster)
+
+clust_order_desc_npeak <- table(peaks_df$Cluster) %>% as.data.frame() %>% dplyr::rename(Cluster="Var1", npeaks="Freq") %>% dplyr::arrange(desc(npeaks)) %>% pull(Cluster)
+peaks_df <- peaks_df %>% mutate(Cluster = factor(Cluster, levels = clust_order_desc_npeak))
+clust_organ_map <- peaks_df %>% dplyr::select(Cluster, organ) %>% unique
+rownames(clust_organ_map) <- as.character(clust_organ_map$Cluster)
+
+p1 <- peaks_df %>%
+  ggplot(aes(x = Cluster)) +
+  geom_bar(aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  ggtitle("Number of peaks in global peakset originating from each cluster") +
+  ylab("# peaks") +
+  hide_legend() +
+  theme(axis.text.x = element_text(size = 6))
+
+p2 <- peaks_df %>% 
+  ggplot(aes(x = Cluster)) +
+  geom_bar(aes(fill = organ)) +
+  facet_wrap(~ Overlap_ENCODE_cCREs, nrow = 3) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  ggtitle("Number of peaks in global peakset originating from each cluster by ENCODE overlap status") +
+  ylab("# peaks") +
+  theme(axis.text.x = element_text(size = 4))
+
+a <- peaks_df %>% dplyr::group_by(Cluster) %>% dplyr::summarise(npeak=n()) 
+b <- peaks_df %>% dplyr::filter(Overlap_ENCODE_cCREs==0) %>% dplyr::group_by(Cluster) %>% dplyr::summarise(npeak_0overlap=n())
+ratio_df <- merge(a, b) %>% dplyr::mutate(new_ratio=npeak_0overlap/npeak)
+ratio_df$Cluster <- factor(ratio_df$Cluster, levels=levels(peaks_df$Cluster))
+ratio_df$organ <- clust_organ_map[as.character(ratio_df$Cluster),]$organ
+avg_ratio <- nrow(peaks_df %>% dplyr::filter(Overlap_ENCODE_cCREs==0)) / nrow(peaks_df)
+
+p3 <- ratio_df %>% 
+  ggplot(aes(x = Cluster, y=new_ratio)) +
+  geom_col(aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  geom_hline(yintercept=avg_ratio, linetype="dashed", size=1, color="gray") +
+  ggtitle(paste0("Ratio of new peaks with 0 overlap with ENCODE\n(Avg Ratio=", round(avg_ratio,2), ")")) +
+  ylab("ratio") +
+  theme(axis.text.x = element_text(size = 6)) +
+  theme(legend.position = "none")
+
+p <- cowplot::plot_grid(p1, p2, p3, ncol = 1, rel_heights = c(0.3, 0.7, 0.3), align = "v", axis = "rl")
+p
+# ggsave(plot=p, filename = paste0(figout, "peak_breakdown_by_celltype.pdf"), width = 18, height = 12)
+```
+
+
+What organs do they come from?
+```{r}
+peaks_df <- peaks_gr %>% 
+  mcols() %>% 
+  as.data.frame() %>% 
+  separate(GroupReplicate, sep = "\\._\\.", into = c("Cluster", "Sample")) %>% 
+  left_join(cluster_meta, by = "Cluster")
+
+organ_order_desc_npeak <- table(peaks_df$organ) %>% as.data.frame() %>% dplyr::rename(organ="Var1", npeaks="Freq") %>% dplyr::arrange(desc(npeaks)) %>% pull(organ)
+peaks_df <- peaks_df %>% mutate(organ = factor(organ, levels = organ_order_desc_npeak))
+
+```
+
+
+```{r peak_breakdown_by_organ, fig.width = 8, fig.height = 20}
+
+p1 <- peaks_df %>%
+  ggplot(aes(x = organ)) +
+  geom_bar(aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  ggtitle("Number of peaks in global peakset originating from each organ") +
+  ylab("# peaks") +
+  hide_legend() +
+  theme(axis.text.x = element_text(size = 12))
+
+p2 <- peaks_df %>% 
+  ggplot(aes(x = organ)) +
+  geom_bar(aes(fill = organ)) +
+  facet_wrap(~ Overlap_ENCODE_cCREs, ncol = 1) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  ggtitle("Number of peaks in global peakset originating from each organ by ENCODE overlap status") +
+  ylab("# peaks") +
+  theme(axis.text.x = element_text(size = 12)) +
+  theme(legend.position = "none")
+
+a <- peaks_df %>% dplyr::group_by(organ) %>% dplyr::summarise(npeak=n()) 
+b <- peaks_df %>% dplyr::filter(Overlap_ENCODE_cCREs==0) %>% dplyr::group_by(organ) %>% dplyr::summarise(npeak_0overlap=n())
+ratio_df <- merge(a, b) %>% dplyr::mutate(new_ratio=npeak_0overlap/npeak)
+ratio_df$organ <- factor(ratio_df$organ, levels=levels(peaks_df$organ))
+avg_ratio <- nrow(peaks_df %>% dplyr::filter(Overlap_ENCODE_cCREs==0)) / nrow(peaks_df)
+
+p3 <- ratio_df %>% 
+  ggplot(aes(x = organ, y=new_ratio)) +
+  geom_col(aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  scale_y_continuous(labels = scales::comma) +
+  rotate_x() +
+  geom_hline(yintercept=avg_ratio, linetype="dashed", size=1, color="gray") +
+  ggtitle(paste0("Ratio of new peaks with 0 overlap with ENCODE\n(Avg Ratio=", round(avg_ratio,2), ")")) +
+  ylab("ratio") +
+  theme(axis.text.x = element_text(size = 12)) +
+  theme(legend.position = "none")
+
+
+p <- cowplot::plot_grid(p1, p2, p3, ncol = 1, rel_heights = c(0.3, 0.7), align = "v", axis = "rl")
+p
+# ggsave(plot=p, filename = paste0(figout, "peak_breakdown_by_organ.pdf"), width = 8, height = 20)
+```
+
+<!-- ```{r n_cells_n_frags, fig.width = 17, fig.height = 7} -->
+
+<!-- p3 <- cluster_meta %>%  -->
+<!--   mutate(Cluster = factor(Cluster, levels = clust_order_desc_npeak)) %>%  -->
+<!--   ggplot(aes(x = Cluster, y = ncell)) + -->
+<!--   geom_bar(aes(fill = organ), stat = "identity") + -->
+<!--   scale_fill_manual(values = cmap_organ) + -->
+<!--   scale_y_continuous(labels = scales::comma) + -->
+<!--   rotate_x() + -->
+<!--   ggtitle("Number of cells") + -->
+<!--   ylab("# cells") + -->
+<!--   theme(axis.text.x = element_text(size = 6)) -->
+
+<!-- n_frags <- read_tsv(file.path(hdma_path, "Figures/chrombpnet/output/00-inputs/count_fragments/fragmentsPerCluster.tsv")) # TODO change this path -->
+
+<!-- p4 <- cluster_meta %>%  -->
+<!--   left_join(n_frags, by = c("Cluster" = "RNA_Clusters")) %>%  -->
+<!--   mutate(Cluster = factor(Cluster, levels = clust_order_desc_npeak)) %>%  -->
+<!--   ggplot(aes(x = Cluster, y = total_frags)) + -->
+<!--   geom_bar(aes(fill = organ), stat = "identity") + -->
+<!--   scale_fill_manual(values = cmap_organ) + -->
+<!--   scale_y_continuous(labels = scales::comma) + -->
+<!--   rotate_x() + -->
+<!--   ggtitle("Total # fragments") + -->
+<!--   ylab("# fragments") + -->
+<!--   theme(axis.text.x = element_text(size = 6)) + -->
+<!--   hide_legend() -->
+
+<!-- cowplot::plot_grid(p3, p4, ncol = 1, align = "v", axis = "rl") -->
+
+<!-- ``` -->
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+.libPaths()
+sessionInfo()
+
+```
+

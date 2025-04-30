@@ -1,0 +1,750 @@
+---
+title: "Dendrogram for similarity across cell types"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "02-global_analysis/02" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+
+```
+
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+```
+
+***
+
+# Overview
+
+Construct a dendrogram over clusters.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(glue)
+library(readr)
+library(tibble)
+library(stringr)
+library(Seurat)
+library(cowplot)
+library(data.table)
+library(pvclust)
+library(dendextend)
+library(ArchR)
+library(here)
+
+# shared project scripts/functions
+source(here::here("code/utils/plotting_config.R"))
+source(here::here("code/utils/matrix_helpers.R"))
+source(here::here("code/utils/seurat_helpers.R"))
+source(here::here("code/utils/sj_scRNAseq_helpers.R"))
+source(here::here("code/utils/hdma_palettes.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+```{r}
+
+set.seed(100)
+
+```
+
+
+# Load metadata
+
+Get organ metadata:
+
+```{r organ_codes}
+
+organ_meta <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+organ_meta
+
+```
+
+
+
+Set up cluster metadata, which we'll use to label the dendrogram:
+
+```{r cluster_meta}
+
+cluster_meta <- map_dfr(list.files(here::here("output/01-preprocessing/02/shared/meta"),
+                                   pattern = "*_meta_cluster.txt", full.names = TRUE),
+                        ~ fread(.x, data.table = FALSE)) %>% 
+  mutate(Cluster = glue("{organ_code}_{L1_clusterID}")) %>% 
+  mutate(Cluster_labelled = glue("{organ_code}_{L1_clusterID}_{L3_clusterName}")) %>% 
+  left_join(enframe(cmap_organ, "organ", "Color")) %>% 
+  left_join(enframe(cmap_compartment, "L0_clusterName", "Color_compartment")) %>% 
+  tibble::column_to_rownames(var = "Cluster")
+
+```
+
+
+Load cell metadata:
+
+```{r load_cell_meta}
+
+load(here::here("output/02-global_analysis/01/cell_meta_all.Rda"))
+
+```
+
+
+
+# Cluster average expression
+
+To be able to assess some global relationships between all 
+clusters, let's take average expression across cells in each cluster:
+
+```{r avg_expression, eval = FALSE}
+
+# for each organ, load up the RNA object and calculate cluster mean expression across all genes
+for (i in 1:nrow(organ_meta)) {
+  
+  print(organ_meta$organ[i])
+  seurat_path <- sprintf(here::here("output/01-preprocessing/02/%s/rna_preprocess_output/RNA_obj_clustered_final.rds"), organ_meta$organ[i])
+  
+  if (file.exists(seurat_path) & !file.exists(glue("{out}/{organ_meta$organcode[i]}_avg_exp.decontx.Rds"))) {
+    
+    obj <- readRDS(seurat_path)
+    
+    # prepend clusters with organ code
+    obj$Clusters <- paste0(organ_meta$organcode[i], "_", obj$Clusters)
+    Idents(obj) <- "Clusters"
+    
+    # get average expression for both decontx and RNA assays
+    obj_avg <- Seurat::AverageExpression(obj, return.seurat = FALSE, assays = "decontX")$decontX
+    saveRDS(obj_avg, glue("{out}/{organ_meta$organcode[i]}_avg_exp.decontx.Rds"))
+    
+    # RNA data isn't log-normalized
+    DefaultAssay(obj) <- "RNA"
+    obj <- NormalizeData(obj)
+    
+    obj_avg <- Seurat::AverageExpression(obj, return.seurat = FALSE, assays = "RNA")$RNA
+    saveRDS(obj_avg, glue("{out}/{organ_meta$organcode[i]}_avg_exp.rna.Rds"))
+    
+  } else {
+    next()
+  }
+  
+}
+
+```
+
+
+# Dendrogram based on RNA
+
+Here, we can approximately follow a method used by Tasic et al 2018 and Yao et al 2021
+in Allen Institute publications, where dendrograms are computed by using the mean
+cluster expression on top pairwise differentially expressed genes.
+For construction of the dendrogram, we will consult the `build_dend()` function
+used in the `scrattch.hicat` package: https://github.com/AllenInstitute/scrattch.hicat/blob/7ccfbc24e3a51326740d08b5b306b18afeb890d9/R/dendro.R#L49
+
+Instead of using pairwise differentially expressed genes, we will use the top cluster
+markers in the one-vs-all differential expression analyses computed for each organ.
+
+```{r top_markers}
+
+n <- 20
+top_markers <- map2(organ_meta$organ, organ_meta$iteration, function(organ, iter) {
+  
+  # if data for that organ exists,
+  if (!is.na(iter)) {
+    
+    # load the markers corresponding to the final iteration
+    markers <- fread(
+      file.path(here::here("output/01-preprocessing/02/"), organ, glue("rna_preprocess_output/cluster_markers/cluster_markers_SCTdecontXnorm_{iter}.tsv")),
+      data.table = FALSE)
+    
+    # for each cluster, filter to only positive markers, and select the top 20 based on LFC
+    markers %>% 
+      group_by(cluster) %>% 
+      filter(avg_log2FC > 0) %>% 
+      top_n(n, avg_log2FC) %>%
+      pull(gene) %>% 
+      unique()
+    
+  }
+})
+
+top_markers <- top_markers %>% unlist() %>% unique()
+length(top_markers)
+
+saveRDS(top_markers, file = glue("{out}/top_markers.Rds"))
+
+```
+
+```{r avg_exp_mat}
+
+avg_exp_decontx_list <- map(list.files(out, pattern = "*_avg_exp.decontx.Rds", full.names = TRUE), ~ readRDS(.x))
+map(avg_exp_decontx_list, dim)
+
+# subset each mat to the collection of marker genes, to save time in the merge
+avg_exp_decontx_subset_list <- map(avg_exp_decontx_list, ~ .x[rownames(.x) %in% top_markers, ])
+map(avg_exp_decontx_subset_list, dim)
+
+```
+
+
+```{r merge_avg_exp_mat}
+
+#' A version of base::merge with some handy defaults (bind columns of different
+#' matrices, according to their rownames, allowing for differences in the rows
+#' present in the two dfs)
+#' 
+#' @param m1 and m2, data frames to merge by rownames
+merge2 <- function(m1, m2) {
+  
+  # all controls whether or not to keep genes (rows) that apppear in some matrices 
+  # but not others. We keep them and fill missing values with NA. This is to allow
+  # keeping genes that might be highly organ specific.
+  merge(m1, m2, by = "row.names", all = TRUE) %>% 
+    # merge returns a df where the first column contains the rownames, here
+    # we just move it out to allow for subsequent merges
+    tibble::column_to_rownames("Row.names")
+  
+}
+
+# combine all avg exp matrices
+avg_exp_decontx_mat_subset <- Reduce(merge2, avg_exp_decontx_subset_list)
+dim(avg_exp_decontx_mat_subset)
+any(is.na(avg_exp_decontx_mat_subset))
+avg_exp_decontx_mat_subset[is.na(avg_exp_decontx_mat_subset)] <- 0
+any(is.na(avg_exp_decontx_mat_subset))
+
+# avg_exp_rna_mat <- Reduce(merge2, avg_exp_rna_list)
+# dim(avg_exp_rna_mat)
+# any(is.na(avg_exp_rna_mat))
+
+saveRDS(avg_exp_decontx_mat_subset, file = glue("{out}/avg_expr_marker_subset.decontx.Rds"))
+
+```
+
+
+
+Dendrogram helpers:
+
+```{r dend_fn}
+
+# adapting from scrattch.hicat
+# https://github.com/AllenInstitute/scrattch.hicat/blob/7ccfbc24e3a51326740d08b5b306b18afeb890d9/R/dendro.R#L49
+pvclust_show_signif_gradient <- function(dend, pvclust_obj, signif_type = c("bp", "au"),
+                                         signif_col_fun = NULL, ...) {
+  
+  signif_type <- match.arg(signif_type)
+  pvalue_per_node <- pvclust_obj$edges[[signif_type]]
+  ord <- rank(get_branches_heights(dend, sort = FALSE))
+  pvalue_per_node <- pvalue_per_node[ord]
+  signif_col <- signif_col_fun(100)
+  pvalue_by_all_nodes <- rep(NA, nnodes(dend))
+  ss_leaf <- which_leaf(dend)
+  pvalue_by_all_nodes[!ss_leaf] <- pvalue_per_node
+  pvalue_by_all_nodes <- na_locf(pvalue_by_all_nodes)
+  the_cols <- signif_col[round(pvalue_by_all_nodes * 100)]
+  signif_lwd = seq(0.5,2,length.out=100)
+  the_lwds = signif_lwd[round(pvalue_by_all_nodes * 100)]
+  dend = dend %>%
+    assign_values_to_branches_edgePar(the_cols, "col") %>%
+    assign_values_to_branches_edgePar(the_lwds, "lwd") %>%
+    assign_values_to_branches_edgePar(pvalue_by_all_nodes, "conf") 
+}
+
+
+#' A distance function for Spearman rank correlation
+#' from https://davetang.org/muse/2010/11/26/hierarchical-clustering-with-p-values-using-spearman/
+spearman <- function(x, ...) {
+  x <- as.matrix(x)
+  res <- as.dist(1 - cor(x, method = "spearman", use = "everything"))
+  res <- as.dist(res)
+  attr(res, "method") <- "spearman"
+  return(res)
+}
+
+
+build_dend <- function(mat, n_boot = 100, distance = spearman, hclust = "complete") {
+  
+  pvclust_res <- pvclust::pvclust(mat,
+                                  nboot = n_boot,
+                                  method.dist = distance,
+                                  method.hclust = hclust)
+  
+  dend <- as.dendrogram(pvclust_res$hclust)
+  # dend <- dend %>% pvclust_show_signif_gradient(
+  #   pvclust_res,
+  #   signif_type = "bp",
+  #   signif_col_fun = colorRampPalette(c("gray80", "gray50", "black")))
+  
+  return(list(dend = dend, pvclust_res = pvclust_res))
+  
+}
+
+
+```
+
+
+Construct dendrogram, first for the decontX data:
+
+```{r dend_decontx, eval = FALSE}
+
+dim(avg_exp_decontx_mat_subset)
+
+# get correlation matrix
+cor_decontx <- cor(avg_exp_decontx_mat_subset, method = "spearman")
+
+# build dendrogram
+dend_res_decontx <- build_dend(avg_exp_decontx_mat_subset, distance = spearman, hclust = "average", n_boot = 1000)
+
+save(avg_exp_decontx_mat_subset, cor_decontx, dend_res_decontx,
+     file = glue("{out}/dend_res_decontx.Rda"))
+
+```
+
+```{r load_dend}
+
+load(glue("{out}/dend_res_decontx.Rda"))
+
+```
+
+Label and color the leaves:
+
+```{r dend_label}
+
+dend_labeled_decontx <- dend_res_decontx$dend
+labels(dend_labeled_decontx) <- cluster_meta[labels(dend_labeled_decontx), "Cluster_labelled"]
+labels_colors(dend_labeled_decontx) <- cluster_meta[colnames(cor_decontx), ]$Color[order.dendrogram(dend_labeled_decontx)]
+
+dend_labeled_decontx2 <- dend_res_decontx$dend
+labels(dend_labeled_decontx2) <- cluster_meta[labels(dend_labeled_decontx2), "Cluster_labelled"]
+labels_colors(dend_labeled_decontx2) <- cluster_meta[colnames(cor_decontx), ]$Color_compartment[order.dendrogram(dend_labeled_decontx2)]
+
+```
+
+
+Pvclust results and dendrogram with tree colored by significance of the branches:
+
+```{r dend_with_confidence, fig.width = 24, fig.height = 11}
+
+par(mar=c(4,4,4,20))
+plot(dend_res_decontx$pvclust_res, horiz = TRUE)
+
+```
+
+
+
+```{r dend_labels_colored_by_organ, fig.width = 24, fig.height = 11, fig.keep = "last"}
+
+par(mar=c(20,4,4,4))
+plot(dend_labeled_decontx, horiz = FALSE)
+legend("top", legend = names(cmap_organ), fill = cmap_organ, horiz = TRUE)
+
+```
+
+```{r dend_labels_colored_by_L1, fig.width = 24, fig.height = 11, fig.keep = "last"}
+
+par(mar=c(20,4,4,4))
+plot(dend_labeled_decontx2, horiz = FALSE)
+legend("topright", legend = names(cmap_compartment), fill = cmap_compartment)
+
+```
+
+
+Plot the global correlation matrix:
+
+```{r cor_mat_decontx}
+
+hm_fun <- purrr::partial(pheatmap::pheatmap,
+                         mat = cor_decontx[
+                           rev(order.dendrogram(dend_labeled_decontx)),
+                           rev(order.dendrogram(dend_labeled_decontx))],
+                         main = "Correlations; order from bootstrapped tree; mouse only",
+                         cluster_rows = FALSE,
+                         cluster_cols = FALSE,
+                         annotation_col = cluster_meta %>% dplyr::select(organ),
+                         annotation_colors = list("organ" = cmap_organ),
+                         # use the project's RNA-specific palette
+                         color = colorRampPalette(cmap_rna)(n=100),
+                         scale = "none",
+                         breaks = seq(0, 1, 0.01),
+                         border_color = NA,
+                         cellwidth = 13,
+                         cellheight = 13)
+
+# make png/pdf
+hm_fun(filename = glue("{figout}/cor_heatmap.decontx.pdf"))
+hm_fun(filename = glue("{figout}/cor_heatmap.decontx.png"))
+
+knitr::include_graphics(glue("{figout}/cor_heatmap.decontx.png"))
+
+```
+
+
+Let's layer on additional information:
+
+```{r dend_info}
+
+cluster_meta2 <- cluster_meta %>% 
+  tibble::rownames_to_column("Cluster") %>% 
+  # get the order from the dendrogram
+  left_join(data.frame(Cluster = colnames(cor_decontx)[order.dendrogram(dend_labeled_decontx)]) %>% 
+              tibble::rowid_to_column("Order"),
+            by = "Cluster") %>% 
+  # order by dendro order
+  arrange(Order) %>% 
+  mutate(Cluster_labelled = factor(Cluster_labelled, levels = unique(.$Cluster_labelled)))
+
+write_tsv(cluster_meta2, glue("{out}/cluster_metadata_dend_order.tsv"))
+
+```
+
+
+Set up the plot:
+
+```{r dend_info_plot, fig.width = 40, fig.height = 30}
+
+# set theme
+theme_d <- function()  {
+  
+  theme(
+    axis.text.y = element_blank(),
+    axis.title.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_text(angle = -90, size = 20, hjust = 0),
+    panel.border = element_blank(),
+    legend.position = "right", # changed this from bottom to right for proper grid alignment
+    legend.text = element_text(angle = 0, hjust = 0, size = 20))
+  
+}
+
+p1 <- cell_meta_rna %>%
+  left_join(cluster_meta2 %>% dplyr::select(Cluster, Cluster_labelled), by = "Cluster") %>%
+  ggplot(aes(x = Cluster_labelled)) +
+  geom_bar(aes(fill = PCW), position = "fill") +
+  scale_fill_manual(values = cmap_pcw) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("PCW")
+
+p2 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = median_numi)) +
+  geom_col(aes(fill = median_numi)) +
+  # geom_raster(aes(fill = median_numi)) +
+  scale_fill_gradientn(colors = ylrd) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("median UMIs/cell") +
+  ylab(NULL)
+
+p3 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = median_ngene)) +
+  geom_col(aes(fill = median_ngene)) +
+  # geom_raster(aes(fill = median_ngene)) +
+  scale_fill_gradientn(colors = ylrd) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("median # genes/cell") +
+  ylab(NULL)
+
+p4 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = median_nfrags)) +
+  geom_col(aes(fill = median_nfrags)) +
+  # geom_raster(aes(fill = median_nfrags)) +
+  scale_fill_gradientn(colors = ylrd) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("median \n# fragments/cell") +
+  ylab(NULL)
+
+p5 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = median_tss)) +
+  geom_col(aes(fill = median_tss)) +
+  # geom_raster(aes(fill = median_tss)) +
+  scale_fill_gradientn(colors = ylrd) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("median \nTSS enrichment") +
+  ylab(NULL)
+
+p6 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = 1)) +
+  geom_col(aes(fill = L0_clusterName)) +
+  scale_fill_manual(values = cmap_compartment) +
+  theme_d() +
+  coord_flip() +
+  ggtitle("Compartment") +
+  ylab(NULL)
+
+p7 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = 1)) +
+  geom_col(aes(fill = organ)) +
+  scale_fill_manual(values = cmap_organ) +
+  theme_d() + theme(legend.position = "none") +
+  coord_flip() +
+  ggtitle("Organ") +
+  ylab(NULL)
+
+# we have orders of magnitudes different # of cells in some clusters,
+# so let's put these on a log10 scale
+p0 <- cluster_meta2 %>% 
+  ggplot(aes(x = Cluster_labelled, y = log10(ncell))) +
+  geom_col(aes(fill = organ)) +
+  scale_x_discrete(position = "top") +
+  scale_fill_manual(values = cmap_organ) +
+  theme(panel.border = element_blank(), legend.position = "right") +
+  coord_flip() +
+  ggtitle("# cells")
+
+
+plot_grid(p1, p2, p3, p4, p5, p6, p7, p0, nrow = 1,
+          rel_widths = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.3),
+          align = "h", axis = "tb")
+
+
+```
+
+
+# Visualize the top marker heatmap
+
+```{r}
+
+# scale
+avg_exp_decontx_mat_subset_scaled <- avg_exp_decontx_mat_subset %>%
+  # genes are in rows; for each gene, scale expression to [0, 1]
+  apply(1, scales::rescale) %>%
+  t()
+
+```
+
+Loop through clusters _in dendrogram order_ to get their top marker genes,
+to try and get a diagonal heatmap:
+
+```{r}
+
+# get an order for marker genes based on the dendrogram order. First we will simply
+# load the markers, as before, but without getting unique genes, and keeping
+# cluster from which each marker originated
+n <- 20
+top_markers_df <- map2_dfr(organ_meta$organ, organ_meta$iteration, function(organ, iter) {
+
+  # if data for that organ exists,
+  if (!is.na(iter)) {
+
+    # load the markers corresponding to the final iteration
+    markers <- fread(
+      file.path(here::here("output/01-preprocessing/02/"), organ, glue("rna_preprocess_output/cluster_markers/cluster_markers_SCTdecontXnorm_{iter}.tsv")),
+      data.table = FALSE)
+
+    # for each cluster, filter to only positive markers, and select the top 20 based on LFC
+    markers %>%
+      group_by(cluster) %>%
+      filter(avg_log2FC > 0) %>%
+      top_n(n, avg_log2FC) %>%
+      tibble::add_column(organ = organ, .before = 1)
+
+  }
+})
+
+head(top_markers_df)
+
+# reformat df
+top_markers_df <- top_markers_df %>%
+  left_join(cluster_meta2, by = c("organ" = "organ", "cluster" = "L1_clusterID")) %>%
+  dplyr::select(-cluster)
+
+# arrange by Order, then pull out markers
+markers_ordered_unique <- top_markers_df %>% arrange(Order) %>% group_by(Cluster) %>% pull(gene) %>% unique()
+length(markers_ordered_unique)
+
+all(is.numeric(avg_exp_decontx_mat_subset_scaled[markers_ordered_unique, cluster_meta2$Cluster]))
+
+cluster_meta2 <- as.data.frame(cluster_meta2)
+rownames(cluster_meta2) <- cluster_meta2$Cluster
+
+# make a function to plot the heatmap in dendrogram order, and with markers ordered diagonally
+marker_hm_fun <- purrr::partial(
+  pheatmap::pheatmap,
+  mat = avg_exp_decontx_mat_subset_scaled[markers_ordered_unique, cluster_meta2$Cluster],
+  border_color = NA,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  annotation_col = cluster_meta2 %>% dplyr::select(organ),
+  annotation_colors = list("organ" = cmap_organ),
+  # use the project's RNA-specific palette
+  color = colorRampPalette(cmap_rna)(n=100),
+  show_rownames = TRUE,
+  cellwidth = 13,
+  cellheight = 5,
+  main = "Average expression of top 20 marker genes per cluster, scaled to [0,1] across clusters")
+
+# make png/pdf
+marker_hm_fun(filename=paste0(figout, "/marker_heatmap.decontx.pdf"))
+# marker_hm_fun(filename = glue("{figout}/marker_heatmap.decontx.png"))
+# 
+# knitr::include_graphics(glue("{figout}/marker_heatmap.decontx.png"))
+
+```
+
+
+```{r}
+pheatmap::pheatmap(
+  mat = avg_exp_decontx_mat_subset_scaled[markers_ordered_unique, cluster_meta2$Cluster],
+  border_color = NA,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  # annotation_col = cluster_meta2 %>% dplyr::select(organ),
+  # annotation_colors = list("organ" = cmap_organ),
+  # use the project's RNA-specific palette
+  color = colorRampPalette(cmap_rna)(n=100),
+  show_rownames = TRUE,
+  cellwidth = 8,
+  cellheight = 4,
+  main = "Average expression of top 20 marker genes per cluster, scaled to [0,1] across clusters")
+
+```
+### manual selection of marker genes
+inspect the marker genes in a few cell groups of interest
+```{r}
+top_markers_df[grep("hepatocyte", top_markers_df$L3_clusterName),"gene"] %>% 
+    table %>% as.data.frame %>% dplyr::arrange(desc(Freq))
+
+top_markers_df[grep("endothelial", top_markers_df$L3_clusterName),"gene"] %>% 
+    table %>% as.data.frame %>% dplyr::arrange(desc(Freq))
+
+top_markers_df[grep("CM", top_markers_df$L3_clusterName),"gene"] %>% 
+    table %>% as.data.frame %>% dplyr::arrange(desc(Freq))
+
+top_markers_df[grep("neu", top_markers_df$L3_clusterName),"gene"] %>% 
+    table %>% as.data.frame %>% dplyr::arrange(desc(Freq))
+
+top_markers_df[grep("TEC", top_markers_df$L3_clusterName),"gene"] %>% 
+    table %>% as.data.frame %>% dplyr::arrange(desc(Freq))
+```
+Manually add top marker genes for cell groups of interest to markergenes_dendro.R
+
+Then run the following plotting blocks
+```{r}
+source(here::here("output/01-preprocessing/02/shared/markergenes/markergenes_dendro.R"))
+
+# subset each gene expr mat to the collection of markers, to save time in the merge
+avg_exp_decontx_subset_list2 <- map(avg_exp_decontx_list, ~ .x[rownames(.x) %in% featureSets, ])
+map(avg_exp_decontx_subset_list2, dim)
+avg_exp_decontx_mat_subset2 <- Reduce(merge2, avg_exp_decontx_subset_list2)
+dim(avg_exp_decontx_mat_subset2)
+any(is.na(avg_exp_decontx_mat_subset2))
+avg_exp_decontx_mat_subset2[is.na(avg_exp_decontx_mat_subset2)] <- 0 # set any NA to zero
+any(is.na(avg_exp_decontx_mat_subset2))
+
+# scale expr matrix
+avg_exp_decontx_mat_subset_scaled2 <- avg_exp_decontx_mat_subset2 %>%
+  # genes are in rows; for each gene, scale expression to [0, 1]
+  apply(1, scales::rescale) %>%
+  t()
+
+markers <- featureSets[featureSets %in% rownames(avg_exp_decontx_mat_subset_scaled2)]
+
+```
+
+
+```{r marker_heatmap_manual, fig.width=30, fig.height=6}
+# make a function to plot the heatmap in dendrogram order, and with markers ordered diagonally
+marker_hm_fun <- purrr::partial(
+  pheatmap::pheatmap,
+  mat = avg_exp_decontx_mat_subset_scaled2[markers, cluster_meta2$Cluster],
+  border_color = NA,
+  cluster_cols = FALSE,
+  cluster_rows = FALSE,
+  annotation_col = cluster_meta2 %>% dplyr::select(organ),
+  annotation_colors = list("organ" = cmap_organ),
+  # use the project's RNA-specific palette
+  color = colorRampPalette(cmap_rna)(n=100),
+  show_rownames = TRUE,
+  cellwidth = 13,
+  cellheight = 5,
+  main = "Average expression of top marker genes per cluster, scaled to [0,1] across clusters")
+
+# make png/pdf
+# marker_hm_fun()
+marker_hm_fun(filename=paste0(figout, "/marker_heatmap_manual.pdf"))
+```
+
+```{r manual_marker_dotplot, fig.width=30, fig.height=10}
+flat_data <- melt(avg_exp_decontx_mat_subset_scaled2[markers, cluster_meta2$Cluster], 
+                  varnames = c("Markers", "Cluster"), 
+                  value.name = "Expression")
+
+ggplot(flat_data, aes(x=Cluster, y=Markers, color=Expression, size=Expression)) + 
+  geom_point(stroke=0) + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  scale_size(range = c(0, 5)) +  # Adjust dot size range + 
+  scale_y_discrete(limits = rev(unique(flat_data$Markers))) +  # Reverse marker order
+  #scale_color_gradientn(colors = cmap_rna) +
+  labs(x = "Cluster", y = "Markers", size = "Percentage (%)", color = "Expression") +
+  scale_color_gradient(low = "white", high = "red")
+
+
+# pdf(paste0(figout, "/manual_marker_dotplot.pdf"), width=30, height=5)
+# print(p)
+# dev.off()
+# 
+# png(paste0(figout, "/manual_marker_dotplot.png"), width=30, height=5, units ="in", res=300)
+# print(p)
+# dev.off()
+
+
+```
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+sessionInfo()
+
+```
+

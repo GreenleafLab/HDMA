@@ -1,0 +1,111 @@
+# Code to clean up data for supplementary tables
+```{r}
+library(here)
+library(tidyverse)
+```
+
+```{r}
+doc_id      <- "05-misc/03"
+out         <- here::here("output/", doc_id, "/"); dir.create(out, recursive = TRUE)
+```
+
+
+## Supp Table 1. sample meta, filtering thresholds, and qc per sample
+```{r}
+cutoffs <- read_csv(here::here("output/01-preprocessing/02/shared/sample_filter_cutoffs_metadata.csv")) %>% dplyr::rename(sample=SampleName, cutoff_rna_nUMIs=rna_nUMIs, cutoff_rna_nGenes=rna_nGenes, cutoff_rna_pctMT=rna_pctMT, 
+              cutoff_atac_TSS=atac_TSS, cutoff_atac_nFrags=atac_nFrags, cutoff_nFrags_nUMIs_ratio=nFrags_nUMIs_ratio)
+
+tissue_meta <- read_csv(here::here("output/01-preprocessing/02/shared/SampleMetadata.csv")) %>% dplyr::select(
+  SampleName,Batch,R1_BC_Row,StorageCode,Organ,Organ_Abb,PCW,BioID,Sex,RunDate) %>% 
+  dplyr::rename(sample=SampleName, organ=Organ, organ_code=Organ_Abb, 
+                exp_batch=Batch, exp_barcode_row=R1_BC_Row, exp_run_date=RunDate, 
+                tissue_storage_code=StorageCode, tissue_PCW=PCW, tissue_PCD=PCD, tissue_bioID=BioID, tissue_sex=Sex)
+
+sample_metas <- lapply(Sys.glob(here::here("output/01-preprocessing/02/shared/meta/*_meta_sample.txt")), read_tsv)
+sample_metas <- do.call(rbind, sample_metas)
+sample_metas <- sample_metas %>% dplyr::rename(nCells=ncell,
+                                               median_rna_nGenes=median_ngene, median_rna_nUMIs=median_numi, median_rna_pctMT=median_pctmt, 
+                                               median_atac_TSS=median_tss, median_atac_nFrags=median_nfrags, median_atac_frip=median_frip)
+sample_metas <- sample_metas %>% dplyr::select(sample, nCells, median_rna_nGenes, median_rna_nUMIs, median_rna_pctMT, median_atac_TSS, median_atac_nFrags, median_atac_frip)
+
+df <- merge(tissue_meta, cutoffs, how="right") %>% merge(sample_metas)
+write_csv(df, paste0(out, "/TableS1_sample_meta_qc.csv"))
+
+```
+
+## Supp Table 2. cluster annotations and qc
+```{r}
+cluster_meta <- read_tsv(here::here("output/02-global_analysis/02/cluster_metadata_dend_order.tsv"))
+df <- cluster_meta %>% dplyr::mutate(L1_annot=Cluster_labelled, L2_annot=paste0(organ, " ", L2_clusterName)) %>% dplyr::select(Cluster, organ, organ_code, cluster_id=L1_clusterID, compartment=L0_clusterName, L1_annot, L2_annot, L3_annot=L4_clusterName, dend_order=Order,ncell, median_numi, median_ngene, median_nfrags, median_tss, median_frip,note,organ_color=Color, compartment_color=Color_compartment)
+df$Cluster_ChromBPNet <- gsub("StomachEsophagus", "Stomach", paste0(df$organ, "_c", df$cluster_id))
+write_csv(df, paste0(out, "/TableS2_cluster_meta_qc.csv"))
+```
+
+## Supp Table 3. cluster markers
+top 20 only
+```{r}
+organs_keep <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+
+markers_list <- list()
+for (organ in unique(organs_keep$organ)){
+  iter <- organs_keep[organs_keep$organ==organ,]$iteration
+  organ_code <- organs_keep[organs_keep$organ==organ,]$organcode
+  markers <- read_tsv(here::here(glue("output/01-preprocessing/02/{organ}/rna_preprocess_output/cluster_markers/cluster_markers_SCTdecontXnorm_{iter}.tsv")))
+  markers <- markers %>% dplyr::mutate(cluster=paste0(organ_code, "_", cluster))
+  # for each cluster, filter to only positive markers, and select the top 20 based on LFC
+  markers_list[[organ]] <- markers %>% group_by(cluster) %>% filter(avg_log2FC > 0) %>% top_n(20, avg_log2FC)
+}
+df <- do.call(rbind, markers_list)
+
+write_csv(df, paste0(out, "/TableS3_cluster_markers_top20.csv"))
+```
+
+all cluster markers
+```{r}
+markers_list <- list()
+for (organ in unique(organs_keep$organ)){
+  iter <- organs_keep[organs_keep$organ==organ,]$iteration
+  organ_code <- organs_keep[organs_keep$organ==organ,]$organcode
+  markers <- read_tsv(here::here(glue("output/01-preprocessing/02/{organ}/rna_preprocess_output/cluster_markers/cluster_markers_SCTdecontXnorm_{iter}.tsv")))
+  markers <- markers %>% dplyr::mutate(cluster=paste0(organ_code, "_", cluster))
+  
+  markers_list[[organ]] <- markers 
+}
+df <- do.call(rbind, markers_list)
+
+write_csv(df, paste0(out, "/TableS3_cluster_markers_full.csv"))
+```
+
+## Supp Table 4. HRGs
+```{r}
+cluster_meta <- read_csv(paste0(out, "/TableS2_cluster_meta_qc.csv"))
+hrgs_list <- list()
+for (clust in unique(cluster_meta$L3_annot)){
+  hrgs <- read.table(here::here(glue("output/04-enhancers/06/abc_permetaclust_top_genes_1pct_{clust}.tsv")))
+  hrgs_list[[clust]] <- hrgs %>% dplyr::mutate(L3_cluster=clust) %>% dplyr::filter(color=="red") %>% dplyr::select(gene, npeak, gene_rank, L3_cluster)
+}
+hrgs_list[["global"]] <- read.table(here::here(glue("output/04-enhancers/06/abc_global_crossmetaclust_top_genes_1pct.tsv"))) %>% 
+  dplyr::mutate(L3_cluster="global") %>% dplyr::filter(color=="red") %>% dplyr::select(gene, npeak, gene_rank, L3_cluster)
+df <- do.call(rbind, hrgs_list)
+rownames(df) <- NULL
+write_csv(df, paste0(out, "/TableS4_HRGs.csv"))
+```
+## Concatenated per cell meta for Zenodo
+```{r}
+cluster_meta <- read_csv(paste0(out, "/TableS2_cluster_meta_qc.csv"))
+
+cell_meta_list <- list()
+for (organ_code in unique(cluster_meta$organ_code)){
+  df <- read_tsv(here::here(glue("output/01-preprocessing/02/shared/meta/{organ_code}_meta.txt")))
+  cell_meta_list[[organ_code]] <- df %>% dplyr::select(cb, Cluster=L1_clusterID) %>% dplyr::mutate(Cluster=paste0(organ_code, "_", Cluster), organ_code=organ_code)
+  
+}
+
+df <- do.call(rbind, cell_meta_list)
+rownames(df) <- NULL
+write_csv(df, paste0(out, "/per_cell_meta.csv"))
+
+```
+
+
+

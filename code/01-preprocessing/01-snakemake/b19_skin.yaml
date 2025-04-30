@@ -1,0 +1,52 @@
+output_dir: "$PROJ_ROOT/output/01-preprocessing/01/Skin"
+
+## Uncomment these lines to do a trial run with only two small test chunks per sublibrary
+# chunk_size: 2_000_000
+# test_chunks: 2
+chunk_size: 20_000_000
+
+genome:
+  bowtie2: $PROJ_ROOT/data/reference/bowtie2/hg38
+  star: $PROJ_ROOT/data/reference/star/
+  gene_annotation: $PROJ_ROOT/data/reference/gtf/gencode.v41.annotation.BPfiltered.gtf
+
+# Regular expressions for 1st round barcodes that should be mapped to each sample
+# Must cover all 1st round barcodes 
+# (use a dummy Undetermined sample if some 1st round barcodes are unused)
+samples:
+  T45_b19_Skin_PCW17: "[A-C]0[1-6]"
+  T11_b19_Skin_PCW19: "[A-C](0[7-9]|1[0-2])"
+  T408S_b19_Skin_PCW19: "[D-F]0[1-6]"
+  T187_b19_Skin_PCW23: "[D-F](0[7-9]|1[0-2])"
+  T299_b19_Scalp_PCW21: "(G[0-9][0-9]|H0[1-6])"
+  dummy: "H(0[7-9]|1[0-2])"
+
+sequencing:
+  230913:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230913_A00509_0788_BHLFWTDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL141: TGCACGAA
+      CL142: GGCAACCT
+    RNA_I2:
+      CL141: CTTAATGC
+      CL142: GTTATCGT
+  231004:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/231004_A00509_0804_BHLMCCDSX7
+    tile_chunks: 20 # speed up bcl2fastq 
+    ATAC_I2:
+      CL143: ACATAAGG
+      CL144: CGTTGCTG
+      CL145: ATTGAACC
+      CL146: ACGAATGT
+      CL147: TGGGAATC
+      CL148: GCAGTCCG
+    RNA_I2:
+      CL143: CCCGCAGG
+      CL144: AACAATCA
+      CL145: TCCGTGCC
+      CL146: GAATGATC
+      CL147: ATGACCAT
+      CL148: TTGGTACG

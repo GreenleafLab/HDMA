@@ -1,0 +1,57 @@
+# working directory is ABC-Enhancer-Gene-Prediction-CustomRegions 
+
+### INPUT DATA
+# Add your inputs here
+biosamplesTable: "config/config_biosamples_hdma.tsv"  # replace with your own config/config_biosamples.tsv
+custom_regions: "hdma_global_acCREs.bed" # path to root/output/04-enhancers/01/hdma_global_acCREs.bed
+
+### OUTPUT DATA
+results_dir: "results/"
+
+
+### REFERENCE FILES
+ref:
+        chrom_sizes: "reference/hg38/GRCh38_EBV.no_alt.chrom.sizes.tsv"
+        regions_blocklist: "reference/hg38/GRCh38_unified_blacklist.bed"
+        ubiquitous_genes: "reference/UbiquitouslyExpressedGenes.txt"
+        genes: "reference/hg38/CollapsedGeneBounds.hg38.bed"
+        genome_tss: "reference/hg38/CollapsedGeneBounds.hg38.TSS500bp.bed"
+        qnorm: "reference/EnhancersQNormRef.K562.txt"
+        abc_thresholds: "reference/abc_thresholds.tsv"
+
+### RULE SPECIFIC PARAMS
+params_macs:
+        pval: 0.1
+        genome_size: hs  # shortcuts: hs: human ; mm: mice
+        threads: 10
+
+# These parameters are used to run the Run Candidate Regions portion of the abc code 
+params_candidate:
+        peakExtendFromSummit: 250
+        nStrongestPeaks: 150000
+
+# These parameters are used to run the Run Neighborhoods portion of the abc code
+params_neighborhoods:
+        # Recommended to keep as True. Setting to False leads will result in 
+        # different ABC scores that don't follow the pre-set ABC thresholds
+        use_qnorm: True  
+        
+# These parameters are used to run the Predictions portion of the abc code
+params_predict:
+        flags: "--scale_hic_using_powerlaw"
+        hic_gamma: 1.024238616787792  # avg hic gamma
+        hic_scale: 5.9594510043736655  # avg hic scale
+        hic_pseudocount_distance: 5000  # powerlaw at this distance is added to the contact for all predictions
+
+params_filter_predictions:
+        score_column: 'ABC.Score'
+        threshold: null  # null => Automatic determination based on input 
+        include_self_promoter: True
+        only_expressed_genes: False
+
+
+### INTERNAL USE ONLY
+
+# ABS path to prepend to reference and script files
+# Only relevant when using ABC as a submodule
+ABC_DIR_PATH: ""

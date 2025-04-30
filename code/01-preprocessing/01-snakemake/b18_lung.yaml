@@ -1,0 +1,57 @@
+output_dir: "$PROJ_ROOT/output/01-preprocessing/01/Lung_b18"
+
+## Uncomment these lines to do a trial run with only two small test chunks per sublibrary
+# chunk_size: 2_000_000
+# test_chunks: 2
+chunk_size: 20_000_000
+
+genome:
+  bowtie2: $PROJ_ROOT/data/reference/bowtie2/hg38
+  star: $PROJ_ROOT/data/reference/star/
+  gene_annotation: $PROJ_ROOT/data/reference/gtf/gencode.v41.annotation.BPfiltered.gtf
+
+# Regular expressions for 1st round barcodes that should be mapped to each sample
+# Must cover all 1st round barcodes 
+# (use a dummy Undetermined sample if some 1st round barcodes are unused)
+samples:
+  T175_b18_Lung_PCW19: "A[0-9][0-9]"
+  T77_b18_Lung_PCW18: "B[0-9][0-9]"
+  T49_b18_Lung_PCW20: "C[0-9][0-9]"
+  T333_b18_Lung_PCW21: "D[0-9][0-9]"
+  T305_b18_Lung_PCW21: "E[0-9][0-9]"
+  T198_b18_Lung_PCW23: "F[0-9][0-9]"
+  T24_b18_Lung_PCW17: "G[0-9][0-9]"
+  dummy: "H[0-9][0-9]"
+
+sequencing:
+  230913:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/230913_A00509_0788_BHLFWTDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL133: GCGATCTA
+      CL134: ATAGAGAG
+    RNA_I2:
+      CL133: GATTTCCA
+      CL134: ATCATGTT
+  231002:
+    type: bcl
+    run_dir: $PROJ_ROOT/data/seqruns/231002_A00509_0802_BHLMNFDSX7
+    tile_chunks: 20 # speed up bcl2fastq
+    ATAC_I2:
+      CL135: AGAGGATA
+      CL136: TCTACTCT
+      CL137: CTCCTTAC
+      CL138: TATGCAGT
+      CL139: TACTCCTT
+      CL140: AGGCTTAG
+    RNA_I2:
+      CL135: TTTCATCA
+      CL136: AGTCCGAC
+      CL137: GCTAGAAA
+      CL138: CTTGGTTA
+      CL139: CGATACAC
+      CL140: TTGATGGA
+  
+     
+  

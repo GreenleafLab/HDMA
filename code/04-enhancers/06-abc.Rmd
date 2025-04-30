@@ -1,0 +1,1097 @@
+---
+title: "summary stats on abc analyses"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+params:
+  threads: NULL
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "04-enhancers/06" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+cache       <- paste0("~/scratch/cache/", project_id, "/", doc_id, "/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      cache.path = cache,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(here)
+library(ArchR)
+library(tidyverse)
+library(ggplot2)
+library(glue)
+library(cowplot)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(ComplexHeatmap)
+library(circlize)
+library(ggpubr)
+library(BPCells)
+
+# shared project scripts/functions
+script_path <- here::here("code/utils/")
+source(file.path(script_path, "track_helpers_BL.R"))
+source(file.path(script_path, "track_helpers_SJ.R"))
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "GO_wrappers.R"))
+source(file.path(script_path, "trackplots.R"))
+
+ggplot2::theme_set(theme_minimal())
+addArchRGenome("hg38")
+```
+
+# Get tissue metadata
+
+```{r}
+
+tissue_meta <- read_tsv(here::here("code/02-global_analysis/01-organs_keep.tsv"))
+
+```
+# Get all annotations
+
+```{r get_annot}
+# add organ colors
+col.data.frame <- data.frame(Color=cmap_organ) %>% dplyr::mutate(organ=names(cmap_organ))
+
+organ.code.list <- tissue_meta$organcode
+all.annots <- lapply(1:length(organ.code.list), function(i){
+  # read cluster id annotation
+  annot <- read.csv(sprintf(here::here("output/01-preprocessing/02/shared/meta/%s_meta_cluster.txt"), organ.code.list[i]), sep="\t") %>% as.data.frame
+  rownames(annot) <- annot$cb
+  annot$L0_clusterID <- paste0(organ.code.list[i],"_",annot$L1_clusterID)
+  annot$L3_clusterID <- paste0(organ.code.list[i],"_",annot$L3_clusterName)
+  return(annot)
+})
+all.annots <- dplyr::bind_rows(all.annots)
+rownames(all.annots) <- all.annots$L0_clusterID
+
+all.annots <- all.annots %>%
+  mutate(Cluster = paste0(organ_code, "_",L1_clusterID)) %>%
+  mutate(Cluster_labelled = paste0(organ_code, "_", L1_clusterID, "_", L3_clusterName)) %>%
+  left_join(col.data.frame) %>%
+  tibble::column_to_rownames(var = "Cluster")
+head(all.annots)
+```
+# Plot basic ABC stats
+```{r , eval=FALSE}
+abc_dir <- here::here("output/04-enhancers/03/")
+global <- readRDS(here::here("output/04-enhancers/01/peaks_all_df_annots.rds"))
+
+for (organ in tissue_meta$organ){
+#for (organ in tissue_meta$organ[10:12]){
+  message(organ)
+  if (organ=="StomachEsophagus"){
+    dirs <- Sys.glob(paste0(abc_dir, "/results/Stomach*"))
+  } else{
+  dirs <- Sys.glob(paste0(abc_dir, "/results/", organ, "*"))
+  }
+  abc_preds <- lapply(dirs, function(n){
+    message(n)
+    output <- read.csv(file.path(n, "Predictions/EnhancerPredictionsFull_threshold0.013_self_promoter.tsv"), sep = "\t")
+    return(output)
+  })
+  
+  # merge all predictions from clusters of the same organ
+  abc <- do.call(rbind, abc_preds)
+  
+  # filter for only predictions where taret gene is expressed by promoter activity
+  abc <- abc[abc$TargetGeneIsExpressed=="True",]
+  dim(abc)
+  table(abc$class)
+  table(abc$CellType)
+  p6 <- ggplot(abc, aes(x=CellType, fill=CellType)) + geom_bar() + theme_BOR() + theme(axis.text.x =element_text(angle=90, hjust=1)) + ylab("number of ABC links pass filter")
+  table(abc$TargetGeneIsExpressed)
+
+
+  # plots
+  p1 <- gghistogram(abc$ABC.Score) + xlab("ABC Score") + ggtitle(organ)
+  p2 <- gghistogram(abc[abc$class!="promoter",]$ABC.Score) + xlab("ABC Score") + ggtitle(paste0(organ, " (no promoter)"))
+
+  p3 <- gghistogram(abc[abc$class!="promoter",]$distance) + xlab("distance in bp") + ggtitle(paste0(organ, " (no promoter)"))
+  p4 <- ggplot(abc, aes(x=distance, y=ABC.Score)) + rasterise(geom_point(), dpi = 150) + xlab("distance in bp") + ggtitle(organ)
+
+  # filter for non-promoters only
+  abc[abc$class!="promoter",] %>% group_by(chr, start, end, TargetGene) %>% dplyr::summarise(nclusts=n()) %>% arrange(desc(nclusts)) -> test
+  p5 <- gghistogram(test$nclusts) + ggtitle(paste0(organ, " (no promoter)")) + xlab("# of clusters where peak-gene link was predicted by ABC")
+
+  pdf(paste0(figout, "/abc_summary_", organ, ".pdf"), width=5, height=5)
+  for (p in (paste0("p", 1:6))){
+    eval(as.symbol(p)) %>% print
+  }
+  dev.off()
+
+  saveRDS(abc, paste0(out, "/abc_raw_", organ, ".rds"))
+  
+  ## overlap with global peakset
+  # filter to top target gene per peak with the highest ABC score
+  abc_dedup <- abc %>% dplyr::group_by(chr, start, end, TargetGene) %>% dplyr::summarise(nclusts=n(), med_abc_score=median(ABC.Score)) %>% group_by(chr,start,end) %>% arrange(desc(med_abc_score)) %>% dplyr::slice(1)
+
+  overlap <- findOverlaps(GRanges(global), GRanges(abc_dedup))
+
+  organcode <- tissue_meta[tissue_meta$organ==organ,]$organcode
+
+  global[paste0("abc_is_linked_to_gene_", organcode)] <- 0
+  global[overlap@from, paste0("abc_is_linked_to_gene_", organcode)] <- 1
+
+  global[paste0("abc_linked_gene_", organcode)] <- "None"
+  global[overlap@from, paste0("abc_linked_gene_", organcode)] <- abc_dedup[overlap@to, "TargetGene"]
+
+  global[paste0("med_abc_score_", organcode)] <- 0
+  global[overlap@from, paste0("med_abc_score_", organcode)] <- abc_dedup[overlap@to, "med_abc_score"]
+
+  # the percentage of peaks with identical nearest gene and linked abc gene
+  test <- global[!is.na(global$nearestGene) & global[paste0("abc_linked_gene_", organcode)]!="None",]
+  message(sprintf("%s: %.2f %% of peaks have identical nearest gene and linked abc gene", organ, sum(test$nearestGene == test[paste0("abc_linked_gene_", organcode)])/dim(test)[1] * 100))
+}
+
+saveRDS(global, paste0(out, "/abc_summary_df.rds"))
+```
+
+
+# Exploring the global ABC dataframe
+```{r global_abc_summary, fig.width=5, fig.height=5}
+global <- readRDS(paste0(out, "/abc_summary_df.rds"))
+df <- global[,colnames(global)[grep("abc_linked_gene|nearestGene",colnames(global))]]
+
+identical_row <- apply(df, 1, function(row) all(row == row[1]))
+
+sprintf("%d global peaks are linked to the same gene that's also the nearest gene in all organ ABC analysis",length(which(identical_row)))
+
+# plot the breakdown of the n_organs each peak has a linked ABC gene in
+global[,grep("abc_is_linked_to_gene", colnames(global))] -> test
+global$norg_abc <- rowSums(test)
+p1 <- ggpubr::gghistogram(global$norg_abc) + xlab("number of organs each peak is linked to a gene in") + ggtitle("global")
+
+p2 <- ggplot(global[sample(1:dim(global)[1],size=100000),], aes_string(x="norg_abc",group="norg_abc", y="score")) + geom_boxplot(outliers = F) + xlab("#organs each peak is linked to a gene in") + ylab("macs2 peak calling score") + theme_classic()
+
+
+p3 <- ggplot(global, aes(x=norg_abc, fill=peakType)) + geom_bar(position="fill") + theme_BOR()
+
+p1
+p2
+p3
+
+```
+
+## plot some examples of the ABC links predicted in all organs
+```{r plot_global_organ_abc_linkinallorgan_example, fig.height=8, fig.width=9}
+global_bp_obj <- readRDS(here::here("output/05-misc/01/global_bp_obj.rds"))
+
+subglobal <- global[which(identical_row), ]
+subglobal$med_abc_score <- subglobal[,colnames(global)[grep("med_abc_score_",colnames(global))]] %>% as.data.frame %>% rowMeans
+subglobal$abc_linked_gene <- subglobal$abc_linked_gene_AG
+
+# convert to loops 
+# first get the TSS coords from ABC reference file
+tss <- read.table(here::here("output/04-enhancers/03/reference/hg38/CollapsedGeneBounds.hg38.bed"), col.names = c("seqnames", "start", "end", "symbol", "", "strand", "id", "type"))
+tss$tss_start <- 0
+tss[tss$strand=="-", "tss_start"] <- tss[tss$strand=="-", "end"]
+tss[tss$strand=="+", "tss_start"] <- tss[tss$strand=="+", "start"]
+
+subglobal <- merge(subglobal, tss[,c("symbol", "tss_start")], by.x="abc_linked_gene", by.y="symbol", all.x=T)
+
+loops <- subglobal[,c("seqnames", "abc_linked_gene", "peak_name", "med_abc_score")]
+loops$start <- pmin((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+loops$end <- pmax((subglobal$start + subglobal$end)%/%2, subglobal$tss_start)
+
+# plot
+region <- GRanges(subglobal[1,]) + 5e4
+overlap <- findOverlaps(region, GRanges(subglobal))
+peaks_highlight <- ranges(GRanges(subglobal)[overlap@to])
+highlights <- gr_to_highlight(peaks_highlight)
+
+p <- trackplot_helper_v2c(
+  region=region,
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  loops=GRanges(loops)[findOverlaps(GRanges(loops), region)@from], loop_color="med_abc_score", 
+  flank=1e5,
+  loop_label = "ABC predicted links",
+  highlights = highlights
+)
+p
+
+```
+## distribution of the abc loop span
+```{r plot_abc_linkinallorgan_width_distr, fig.width=5, fig.height=5}
+# for cross-organ links
+p <- ggpubr::gghistogram(ranges(GRanges(loops))@width) + xlab("distance between ABC predicted enhancer-gene pairs") + ggtitle("peaks linked to the same gene in all 12 organs")
+p1 <- p + scale_x_log10()
+p
+p1
+```
+
+
+## J plot, top genes with most # of linked peaks conserved across organs
+```{r plot_abc_linkinallorgan_top_genes, fig.width=6, fig.height=6}
+top_genes <- subglobal$abc_linked_gene %>% table %>% as.data.frame %>% dplyr::rename(gene=".", npeak="Freq") %>% arrange(desc(npeak)) %>% dplyr::mutate(gene_rank=seq_along(gene))
+
+p1 <- ggplot(top_genes, aes(x=gene_rank, y=npeak)) + geom_point() + theme_BOR() +
+    theme(legend.position = "none") + 
+    ggtitle("Top genes with most # of linked peaks conserved across organs")
+
+cutoff <- 7
+top_genes$color <- "gray"
+top_genes[top_genes$npeak>cutoff, "color"] <- "red"
+p2 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+    geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') + 
+    scale_color_manual(values=c("gray", "red")) + 
+    ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 10) + 
+    theme(legend.position = "none") + 
+    annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) + 
+    ggtitle("Top genes with most # of linked peaks conserved across organs")
+
+p3 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+    geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') + 
+    scale_color_manual(values=c("gray", "red")) + 
+    ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 100) + 
+    theme(legend.position = "none") + 
+    annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) + 
+    ggtitle("Top genes with most # of linked peaks conserved across organs")
+
+
+p1
+p2
+p3
+
+write.table(top_genes, paste0(out, "/abc_linkinallorgan_top_genes.tsv"), sep="\t", quote=F)
+```
+
+## GO enrichment for top genes
+```{r top567_linkinallorgan_genes_go_enrichment, fig.height=7, fig.width=8}
+top_genes <- read.table(paste0(out, "/abc_linkinallorgan_top_genes.tsv"))
+
+all_tested_genes <- top_genes$gene
+goi <- top_genes[top_genes$npeak>7,]$gene
+
+upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="BP") 
+goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+
+# pdf(paste0(figout, "/top567_linkinallorgan_genes_go_enrichment.pdf"), height=7, width=8)
+if(nrow(goRes)>1){
+  print(topGObarPlot(goRes, cmap = cmaps_BOR$comet, 
+                     nterms=15, border_color="black", 
+                     barwidth=0.85, title="top genes with conserved ABC links", barLimits=c(0, 20)))
+}
+# dev.off()
+
+# get the actual genes linked to each GO term
+geneList <- factor(as.integer(all_tested_genes %in% goi))
+names(geneList) <- all_tested_genes
+GOdata <- suppressMessages(new(
+            "topGOdata",
+            ontology = "BP",
+            allGenes = geneList,
+            geneSel = goi,
+            annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+            nodeSize = 50
+            ))
+
+goi[goi %in% unlist(genesInTerm(GOdata, "GO:0000122"))]
+
+goi[goi %in% unlist(genesInTerm(GOdata, "GO:0045944"))]
+
+```
+
+
+## tracks for top genes
+```{r plot_global_organ_abc_linkinallorgan_WNT11, fig.width=9, fig.height=8, eval=F}
+# highlights <- tibble(
+#   xmin = peaks_highlight@start,
+#   xmax = peaks_highlight@start + peaks_highlight@width - 1,
+#   color = rep("red", length(peaks_highlight)),
+#   ymin = -Inf, ymax = Inf, alpha = .2
+# )
+
+p <- trackplot_helper_v2c(
+    gene="WNT11",
+    clusters=global_bp_obj$cell_metadata$organ, 
+    fragments=global_bp_obj$frags, 
+    cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+    transcripts=global_bp_obj$transcripts, 
+    expression_matrix = global_bp_obj$rna,
+    loops=GRanges(loops), loop_color="med_abc_score", 
+    flank=3e4,
+    loop_label = "ABC predicted links"
+    #highlights = highlights
+  )
+p
+  # ggplot2::ggsave(plot=p, paste0(figout, "/plot_global_organ_abc_linkinallorgan_WNT11.pdf"), dpi=300, width=9, height=8, units="in")
+
+
+# split by organ
+for (organcode in unique(global_bp_obj$cell_metadata$organ)){
+  submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ==organcode)
+  p <- trackplot_helper_v2c(
+    gene="WNT11",
+    clusters=submeta$L3_clusterID, 
+    fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+    cell_read_counts=submeta$nFrags, 
+    transcripts=global_bp_obj$transcripts, 
+    expression_matrix = global_bp_obj$rna[,submeta$cb],
+    loops=GRanges(loops), loop_color="med_abc_score", 
+    flank=3e4,
+    loop_label = "ABC predicted links"
+    #highlights = highlights
+  )
+  print(p)
+  # ggplot2::ggsave(plot=p, paste0(figout, "/plot_global_organ_abc_linkinallorgan_WNT11_",organcode, ".pdf"), dpi=300, width=9, height=8, units="in")
+}
+
+
+```
+
+## tracks for peaks with no linked genes
+we don't expect a lot of ATAC signal around here
+```{r plot_global_organ_abc_linkin0organ_example, fig.width=9, fig.height=8, eval=F}
+
+peak <- GRanges(global %>% dplyr::filter(norg_abc==0))[10]
+region <- peak + 5e4
+peaks_highlight <- ranges(peak)
+
+highlights <- tibble(
+  xmin = peaks_highlight@start,
+  xmax = peaks_highlight@start + peaks_highlight@width - 1,
+  color = rep("red", length(peaks_highlight)),
+  ymin = -Inf, ymax = Inf, alpha = .2
+)
+
+p <- trackplot_helper_v2c(
+  region=region,
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  loops=GRanges(loops)[findOverlaps(GRanges(loops), region)@from], loop_color="med_abc_score", 
+  flank=1e5,
+  loop_label = "ABC predicted links",
+  highlights = highlights
+)
+p
+```
+
+# Per organ enrichment analysis
+For each organ, find the genes with the most number of ABC links and do GO term enrichment
+
+read global bp object
+```{r}
+global_bp_obj <- readRDS(here::here("output/05-misc/01/global_bp_obj.rds"))
+```
+
+
+## J plot, top genes with most # of linked peaks 
+```{r plot_abc_perorgan_top_genes, fig.width=10, fig.height=10, eval=F}
+
+# cutoff for defining highly regulated genes
+# fill this in after inspecting the J plots
+cutoff_ls <- list(
+  "Adrenal" = 100,
+  "Brain" = 220,
+  "Eye" = 250,
+  "Heart" = 200,
+  "Liver" = 200,
+  "Lung" = 230,
+  "Muscle" = 250,
+  "Skin" = 220,
+  "Spleen" = 150,
+  "StomachEsophagus" = 260,
+  "Thymus" = 200,
+  "Thyroid" = 130
+)
+
+for (organ in tissue_meta$organ){
+  message(organ)
+  # no deduplication, so the same peak-gene link can appear in multiple cell types
+  top_genes <- global_bp_obj$loops_abc[[organ]]$TargetGene %>% table %>% as.data.frame %>% dplyr::rename(gene=".", npeak="Freq") %>% arrange(desc(npeak)) %>% dplyr::mutate(gene_rank=seq_along(gene))
+  
+  
+  cutoff <- cutoff_ls[[organ]]
+  top_genes$color <- "gray"
+  top_genes[top_genes$npeak>cutoff, "color"] <- "red"
+  p2 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+      geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') +
+      scale_color_manual(values=c("gray", "red")) +
+      ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 30) +
+      theme(legend.position = "none") +
+      annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) +
+      ggtitle(paste0(organ, " highly regulated genes"))
+
+  write.table(top_genes, paste0(out, "/abc_perorgan_top_genes_", organ, ".tsv"), sep="\t", quote=F)
+
+  # GO term enrichment
+  all_tested_genes <- top_genes$gene
+  goi <- top_genes[top_genes$npeak>cutoff,]$gene
+  
+  # GO BP
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="BP")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  
+  pdf(paste0(figout, "/abc_perorgan_top_genes_", organ, ".pdf"), width=10, height=10)
+  print(p2)
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(organ, " high regulated genes GO BP enrichment")))
+  }
+   # GO MF
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="MF")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(organ, " high regulated genes GO MF enrichment")))
+  }
+  dev.off()
+
+
+  # get the actual genes linked to each GO term
+  geneList <- factor(as.integer(all_tested_genes %in% goi))
+  names(geneList) <- all_tested_genes
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "BP",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_perorgan_top_genes_GOBP_", organ, ".rds"))
+  
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "MF",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_perorgan_top_genes_GOMF_", organ, ".rds"))
+  
+  goi[goi %in% unlist(genesInTerm(GOdata, "GO:0000122"))] # negative regulation of transcription by RNA polymerase II
+  goi[goi %in% unlist(genesInTerm(GOdata, "GO:0045944"))] # positive regulation of transcription by RNA polymerase II
+  
+
+}
+
+  
+
+```
+
+## top 1% of genes with most # of linked peaks
+```{r plot_abc_perorgan_top_genes_1pct, fig.width=10, fig.height=10, eval=F}
+
+cutoff_pct <- 0.01 # top x pct
+
+for (organ in tissue_meta$organ){
+  message(organ)
+  # no deduplication, so the same peak-gene link can appear in multiple cell types
+  top_genes <- global_bp_obj$loops_abc[[organ]]$TargetGene %>% table %>% as.data.frame %>% dplyr::rename(gene=".", npeak="Freq") %>% arrange(desc(npeak)) %>% dplyr::mutate(gene_rank=seq_along(gene))
+  
+  cutoff <- quantile(top_genes$npeak, 1-cutoff_pct)[[1]]
+  
+  top_genes$color <- "gray"
+  top_genes[top_genes$npeak>cutoff, "color"] <- "red"
+  p2 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+      geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') +
+      scale_color_manual(values=c("gray", "red")) +
+      ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 30) +
+      theme(legend.position = "none") +
+      annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) +
+      ggtitle(paste0(organ, " highly regulated genes"))
+
+  write.table(top_genes, paste0(out, "/abc_perorgan_top_genes_1pct_", organ, ".tsv"), sep="\t", quote=F)
+
+  # GO term enrichment
+  all_tested_genes <- top_genes$gene
+  goi <- top_genes[top_genes$npeak>cutoff,]$gene
+  
+  # GO BP
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="BP")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  
+  pdf(paste0(figout, "/abc_perorgan_top_genes_1pct_", organ, ".pdf"), width=10, height=10)
+  print(p2)
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(organ, " high regulated genes GO BP enrichment")))
+  }
+   # GO MF
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="MF")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(organ, " high regulated genes GO MF enrichment")))
+  }
+  dev.off()
+
+
+  # get the actual genes linked to each GO term
+  geneList <- factor(as.integer(all_tested_genes %in% goi))
+  names(geneList) <- all_tested_genes
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "BP",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_perorgan_top_genes_1pct_GOBP_", organ, ".rds"))
+  
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "MF",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_perorgan_top_genes_1pct_GOMF_", organ, ".rds"))
+  
+  # goi[goi %in% unlist(genesInTerm(GOdata, "GO:0000122"))] # negative regulation of transcription by RNA polymerase II
+  # goi[goi %in% unlist(genesInTerm(GOdata, "GO:0045944"))] # positive regulation of transcription by RNA polymerase II
+  # 
+
+}
+
+
+```
+
+
+# Per meta cell cluster enrichment analysis
+Manually define broad cell clusters by adding a column `L4_clusterName` in `output/02-global_analysis/02/cluster_metadata_dend_order.tsv`, e.g. fibroblasts, immune, neural crest derived
+
+```{r}
+loops <- do.call(c, global_bp_obj$loops_abc %>% unname)
+```
+
+
+## top 1% of genes with most # of linked peaks
+
+```{r}
+clust_meta <- read_tsv(here::here("output/02-global_analysis/02/cluster_metadata_dend_order.tsv"))
+clust_meta$CellType <- paste0(clust_meta$organ, "_c", clust_meta$L1_clusterID)
+clust_meta$CellType[clust_meta$organ=="StomachEsophagus"] <- paste0("Stomach", "_c", clust_meta$L1_clusterID[clust_meta$organ=="StomachEsophagus"])
+
+clust_meta
+```
+
+
+```{r plot_abc_permetaclust_top_genes_1pct, fig.width=10, fig.height=10}
+
+cutoff_pct <- 0.01 # top x pct
+
+for (metaclust in unique(clust_meta$L4_clusterName)){
+  message(metaclust)
+  if (file.exists(paste0(out, "/abc_permetaclust_top_genes_1pct_GOMF_", metaclust, ".rds"))){
+    message("skipping")
+    next
+  }
+  # no deduplication, so the same peak-gene link can appear in multiple cell types
+  clusts <- clust_meta %>% dplyr::filter(L4_clusterName==metaclust)
+  
+  top_genes <- loops[loops$CellType %in% clusts$CellType]$TargetGene %>% table %>% as.data.frame %>% dplyr::rename(gene=".", npeak="Freq") %>% arrange(desc(npeak)) %>% dplyr::mutate(gene_rank=seq_along(gene))
+  
+  cutoff <- quantile(top_genes$npeak, 1-cutoff_pct)[[1]]
+  
+  top_genes$color <- "gray"
+  top_genes[top_genes$npeak>cutoff, "color"] <- "red"
+  p2 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+      geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') +
+      scale_color_manual(values=c("gray", "red")) +
+      ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 30) +
+      theme(legend.position = "none") +
+      annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) +
+      ggtitle(paste0(metaclust, " highly regulated genes"))
+
+  write.table(top_genes, paste0(out, "/abc_permetaclust_top_genes_1pct_", metaclust, ".tsv"), sep="\t", quote=F)
+
+  # GO term enrichment
+  all_tested_genes <- top_genes$gene
+  goi <- top_genes[top_genes$npeak>cutoff,]$gene
+  
+  # GO BP
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="BP")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+ 
+  pdf(paste0(figout, "/abc_permetaclust_top_genes_1pct_", metaclust, ".pdf"), width=10, height=10)
+  print(p2)
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(metaclust, " high regulated genes GO BP enrichment")))
+  }
+   # GO MF
+  upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="MF")
+  goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+  if(nrow(goRes)>1){
+    print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                       nterms=15, border_color="black",
+                       barwidth=0.85, title=paste0(metaclust, " high regulated genes GO MF enrichment")))
+  }
+  dev.off()
+
+
+  # get the actual genes linked to each GO term
+  geneList <- factor(as.integer(all_tested_genes %in% goi))
+  names(geneList) <- all_tested_genes
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "BP",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_permetaclust_top_genes_1pct_GOBP_", metaclust, ".rds"))
+  
+  GOdata <- suppressMessages(new(
+              "topGOdata",
+              ontology = "MF",
+              allGenes = geneList,
+              geneSel = goi,
+              annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+              nodeSize = 50
+              ))
+  saveRDS(GOdata, paste0(out, "/abc_permetaclust_top_genes_1pct_GOMF_", metaclust, ".rds"))
+  
+
+}
+
+
+```
+## summary of all GO MF enrichments
+```{r dotplot_abc_go_term_metaclust_alltop5, fig.width=10, fig.height=10}
+allGO <- list()
+for (metaclust in unique(clust_meta$L4_clusterName)){
+  message(metaclust)
+  
+  GOdata <- readRDS(paste0(out, "/abc_permetaclust_top_genes_1pct_GOMF_", metaclust, ".rds"))
+  GOresult <- suppressMessages(runTest(GOdata, algorithm="weight01", stat="fisher"))
+  GOtab <- GenTable(GOdata, pvalue=GOresult, topNodes=20, numChar=1000)
+  GOtab$Log2FE <- log2(GOtab$Significant / GOtab$Expected)
+  GOtab$pvalue <- as.numeric(GOtab$pvalue)
+  GOtab$negLog10p <- -log10(GOtab$pvalue)
+  GOtab$metaclust <- metaclust
+  allGO[[metaclust]] <- GOtab
+}
+
+topx <-lapply(allGO %>% names, function(n){head(allGO[[n]], 5)})
+
+tmp <- do.call(rbind, topx)
+
+# clustering the GO terms 
+mat_raw <- reshape2::dcast(tmp, metaclust ~ Term, value.var = "Log2FE")
+mat <- mat_raw[,2:ncol(mat_raw)]
+mat[is.na(mat)] <- min(mat[!is.na(mat)]) - 1
+dend <- hclust(dist(mat %>% t), method = "mcquitty")
+dend_clust <- hclust(dist(mat), method = "mcquitty")
+
+tmp$Term <- factor(tmp$Term, levels=colnames(mat)[rev(dend$order)])
+tmp$metaclust <- factor(tmp$metaclust, levels=mat_raw$metaclust[dend_clust$order])
+
+# plot dotplot of enrichments
+ggplot(tmp, aes(x=metaclust, y=Term, color=Log2FE, size=negLog10p)) + geom_point(stroke=0) +
+  theme_classic() + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  # scale_size(range = c(0, 8)) +  # Adjust dot size range 
+  scale_color_gradientn(colors = cmaps_BOR$comet, limits=c(0,5.5)) +
+  labs(x = "Meta cluster", y = "GO term", size = "-log10(p)", color = "log2FE")
+# ggsave(paste0(figout, "/dotplot_abc_go_term_metaclust_alltop5.pdf"), height=10, width=10)
+
+```
+
+manually select terms to display
+```{r dotplot_abc_go_term_metaclust_summary, fig.width=12, fig.height=6}
+terms <- c( 
+  "heme binding", "antioxidant activity", "signaling receptor binding",
+  "DNA-binding transcription factor binding","transcription corepressor activity", "DNA-binding transcription repressor activity, RNA polymerase II-specific",
+  "actin filament binding", "actin binding",
+  "transcription factor binding", 
+  "DNA-binding transcription factor activity, RNA polymerase II-specific",
+  "DNA-binding transcription activator activity, RNA polymerase II-specific","RNA polymerase II cis-regulatory region sequence-specific DNA binding")
+
+ftmp <- tmp %>% dplyr::filter(Term %in% terms)
+ftmp$Term <- factor(ftmp$Term, levels=terms)
+
+# plot dotplot of enrichments
+p1 <- ggplot(ftmp, aes(x=metaclust, y=Term, color=Log2FE, size=negLog10p)) + geom_point(stroke=0) +
+  theme_classic() + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  # scale_size(range = c(0, 8)) +  # Adjust dot size range 
+  scale_color_gradientn(colors = cmaps_BOR$comet, limits=c(0,5.5)) +
+  labs(x = "Meta cluster", y = "GO term", size = "-log10(p)", color = "log2FE") + theme(legend.position = "bottom") 
+ 
+summary <- clust_meta %>% dplyr::group_by(L4_clusterName) %>% dplyr::summarise(ncell=sum(ncell))
+summary$L4_clusterName <- factor(summary$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+
+p2 <- ggplot(summary, aes(x=L4_clusterName, y=log10(ncell))) + geom_col() + theme_classic() + theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+
+clust_meta$L4_clusterName <- factor(clust_meta$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+p3 <- ggplot(clust_meta, aes(x=L4_clusterName, y=ncell, fill=organ)) + geom_col(stat="identity", position="fill") + theme_classic()  + scale_fill_manual(values=cmap_organ) + ylab("pct cells") + theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(legend.position = "none") + theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+
+p <- plot_grid(p2, p3, p1, ncol = 1, rel_heights = c(1, 1, 10), align="v", axis="lr")
+p
+# ggsave(plot=p, filename=paste0(figout, "/dotplot_abc_go_term_metaclust_summary.pdf"), width=12, height=6)
+# ggsave(plot=p, filename=paste0(figout, "/dotplot_abc_go_term_metaclust_summary.png"), width=12, height=6)
+
+
+```
+
+## summary of all GO BP enrichments
+```{r dotplot_abc_go_bp_term_metaclust_alltop5, fig.width=10, fig.height=10}
+allGO <- list()
+for (metaclust in unique(clust_meta$L4_clusterName)){
+  message(metaclust)
+  
+  GOdata <- readRDS(paste0(out, "/abc_permetaclust_top_genes_1pct_GOBP_", metaclust, ".rds"))
+  GOresult <- suppressMessages(runTest(GOdata, algorithm="weight01", stat="fisher"))
+  GOtab <- GenTable(GOdata, pvalue=GOresult, topNodes=20, numChar=1000)
+  GOtab$Log2FE <- log2(GOtab$Significant / GOtab$Expected)
+  GOtab$pvalue <- as.numeric(GOtab$pvalue)
+  GOtab$negLog10p <- -log10(GOtab$pvalue)
+  GOtab$metaclust <- metaclust
+  allGO[[metaclust]] <- GOtab
+}
+
+topx <-lapply(allGO %>% names, function(n){head(allGO[[n]], 5)})
+
+tmp <- do.call(rbind, topx)
+
+# clustering the GO terms 
+mat_raw <- reshape2::dcast(tmp, metaclust ~ Term, value.var = "Log2FE")
+mat <- mat_raw[,2:ncol(mat_raw)]
+mat[is.na(mat)] <- min(mat[!is.na(mat)]) - 1
+dend <- hclust(dist(mat %>% t), method = "mcquitty")
+dend_clust <- hclust(dist(mat), method = "mcquitty")
+
+tmp$Term <- factor(tmp$Term, levels=colnames(mat)[rev(dend$order)])
+tmp$metaclust <- factor(tmp$metaclust, levels=mat_raw$metaclust[dend_clust$order])
+
+# plot dotplot of enrichments
+ggplot(tmp, aes(x=metaclust, y=Term, color=Log2FE, size=negLog10p)) + geom_point(stroke=0) +
+  theme_classic() + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  # scale_size(range = c(0, 8)) +  # Adjust dot size range 
+  scale_color_gradientn(colors = cmaps_BOR$comet, limits=c(0,5.5)) +
+  labs(x = "Meta cluster", y = "GO term", size = "-log10(p)", color = "log2FE")
+# ggsave(paste0(figout, "/dotplot_abc_go_term_metaclust_alltop5.pdf"), height=10, width=10)
+
+```
+
+manually select terms to display
+```{r dotplot_abc_go_bp_term_metaclust_summary, fig.width=8, fig.height=8}
+terms <- c("positive regulation of cell motility", "cell chemotaxis", 
+           "positive regulation of cell-cell adhesion", "negative regulation of endopeptidase activity", "regulation of plasma lipoprotein particle levels", "protein polymerization",
+           "stem cell differentiation", "actin filament bundle assembly", "lung development", "digestive tract development",
+           "regulation of glial cell differentiation", "B cell differentiation", "negative regulation of cell population proliferation",
+           "regulation of Notch signaling pathway", "positive regulation of endothelial cell proliferation",
+           "reactive oxygen species metabolic process", "cell fate commitment", "transport", "cellular catabolic process", "positive regulation of protein-containing complex assembly",
+           "vasoconstriction", "ERK1 and ERK2 cascade", "cellular oxidant detoxification",
+           "camera-type eye morphogenesis", "axis specification", "diencephalon development",
+           "neuron fate commitment",
+           "vasculogenesis", "sprouting angiogenesis",
+           "cartilage development", "angiogenesis",
+           "embryonic limb morphogenesis", "bone morphogenesis", "wound healing",
+           "roof of mouth development", "odontogenesis of dentin-containing tooth",
+           "tube morphogenesis", "morphogenesis of embryonic epithelium", 
+           "skeletal system development", "regulation of Rho protein signal transduction", "skeletal muscle tissue development","organic hydroxy compound biosynthetic process",
+           "columnar/cuboidal epithelial cell differentiation",
+           "skeletal muscle cell differentiation", "muscle organ development", "myofibril assembly",
+           "branching morphogenesis of an epithelial tube",
+           "regulation of heart contraction",           
+           "cellular response to vascular endothelial growth factor stimulus", "cellular response to fibroblast growth factor stimulus",
+           "neural crest cell development", "keratinocyte differentiation",
+           "embryonic organ morphogenesis", "outflow tract morphogenesis", "gland development", 
+           "negative regulation of multicellular organismal process", "negative regulation of cell development",                                                           "neuron migration", "forebrain generation of neurons",
+           "dorsal/ventral pattern formation", "cell fate specification",
+           "regulation of neural precursor cell proliferation", "cerebral cortex development", "axon guidance",
+           "regulation of heart rate", "cardiac muscle cell development", "actin filament organization",
+           "cardiac ventricle morphogenesis", "cardiac septum morphogenesis", "ventricular cardiac muscle tissue development", "cardiac muscle tissue morphogenesis",
+            "gland morphogenesis", "anterior/posterior pattern specification", 
+           "embryonic skeletal system morphogenesis", "artery morphogenesis", "negative regulation of neuron differentiation",
+           "positive regulation of transcription by RNA polymerase II", "negative regulation of transcription by RNA polymerase II")
+
+ftmp <- tmp %>% dplyr::filter(Term %in% terms)
+ftmp$Term <- factor(ftmp$Term, levels=terms)
+
+# plot dotplot of enrichments
+p1 <- ggplot(ftmp, aes(x=metaclust, y=Term, color=Log2FE, size=negLog10p)) + geom_point(stroke=0) +
+  theme_classic() + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  # scale_size(range = c(0, 8)) +  # Adjust dot size range 
+  scale_color_gradientn(colors = cmaps_BOR$comet, limits=c(0,5.5)) +
+  labs(x = "Meta cluster", y = "GO term", size = "-log10(p)", color = "log2FE") + theme(legend.position = "bottom") 
+ 
+summary <- clust_meta %>% dplyr::group_by(L4_clusterName) %>% dplyr::summarise(ncell=sum(ncell))
+summary$L4_clusterName <- factor(summary$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+
+p2 <- ggplot(summary, aes(x=L4_clusterName, y=log10(ncell))) + geom_col() + theme_classic() + theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+
+clust_meta$L4_clusterName <- factor(clust_meta$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+p3 <- ggplot(clust_meta, aes(x=L4_clusterName, y=ncell, fill=organ)) + geom_col(stat="identity", position="fill") + theme_classic()  + scale_fill_manual(values=cmap_organ) + ylab("pct cells") + theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(legend.position = "none") + theme(axis.text.x=element_blank(), axis.title.x=element_blank())
+
+p <- plot_grid(p2, p3, p1, ncol = 1, rel_heights = c(1, 1, 20), align="v", axis="lr")
+p
+# ggsave(plot=p, filename=paste0(figout, "/dotplot_abc_go_bp_term_metaclust_summary.pdf"), width=12, height=12)
+# ggsave(plot=p, filename=paste0(figout, "/dotplot_abc_go_bp_term_metaclust_summary.png"), width=12, height=6)
+
+
+```
+
+```{r dotplot_abc_go_bp_term_metaclust_summary_flipped, fig.width=14, fig.height=8}
+# flipped orientation
+# plot dotplot of enrichments
+p1 <- ggplot(ftmp, aes(y=metaclust, x=Term, color=Log2FE, size=negLog10p)) + geom_point(stroke=0) +
+  theme_classic() + theme(axis.text.x = element_text(angle=90, hjust=1)) + 
+  # scale_size(range = c(0, 8)) +  # Adjust dot size range 
+  scale_color_gradientn(colors = cmaps_BOR$comet, limits=c(0,5.5)) +
+  labs(y = "L3 Cell Cluster", x = "GO Term", size = "-log10(p)", color = "log2FE") + theme(legend.position = "right") 
+ 
+summary <- clust_meta %>% dplyr::group_by(L4_clusterName) %>% dplyr::summarise(ncell=sum(ncell))
+summary$L4_clusterName <- factor(summary$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+
+p2 <- ggplot(summary, aes(x=L4_clusterName, y=log10(ncell))) + geom_col() + theme_classic() + theme(axis.text.y=element_blank(), axis.title.y=element_blank()) + coord_flip()
+
+clust_meta$L4_clusterName <- factor(clust_meta$L4_clusterName, levels=mat_raw$metaclust[dend_clust$order])
+p3 <- ggplot(clust_meta, aes(x=L4_clusterName, y=ncell, fill=organ)) + geom_col(stat="identity", position="fill") + theme_classic()  + scale_fill_manual(values=cmap_organ) + ylab("pct cells") + theme(axis.text.x = element_text(angle=90, hjust=1)) + theme(legend.position = "none") + theme(axis.text.y=element_blank(), axis.title.y=element_blank()) + coord_flip()
+
+p <- plot_grid(p1, p2, p3, ncol = 3, rel_widths = c(20, 1, 1), align="h", axis="tb")
+p
+# ggsave(plot=p, filename=paste0(figout, "/dotplot_abc_go_bp_term_metaclust_summary_flipped.pdf"), width=14, height=8)
+```
+
+## find consistent ABC links across metaclusts
+```{r}
+# no deduplication, so the same peak-gene link can appear in multiple cell types
+metaclust_loops <- c()
+for (metaclust in unique(clust_meta$L4_clusterName)){
+  message(metaclust)
+  clusts <- clust_meta %>% dplyr::filter(L4_clusterName==metaclust)
+  floops <- loops[loops$CellType %in% clusts$CellType]
+  loop_names <- paste0(seqnames(floops), "_", start(floops), "_", end(floops))
+  metaclust_loops <- c(metaclust_loops, unique(loop_names))
+}
+
+consist_loop_names <- metaclust_loops %>% table %>% as.data.frame %>% dplyr::filter(Freq==37) %>% dplyr::select(".") %>% unlist %>% unname %>% as.character
+
+loops$loop_name <- paste0(seqnames(loops), "_", start(loops), "_", end(loops))
+consist_loops <- loops[loops$loop_name %in% consist_loop_names] %>% unique
+consist_loops$CellType <- NULL
+consist_loops$ABC.Score <- NULL
+saveRDS(consist_loops, paste0(out, "/abc_global_crossmetaclust_consistent_links.rds"))
+```
+
+find top genes with consistent links and GO term enrichment
+```{r abc_global_crossmetaclust_top_genes_1pct, fig.width=10, fig.height=10}
+cutoff_pct <- 0.01
+
+top_genes <- consist_loops$TargetGene %>% table %>% as.data.frame %>% dplyr::rename(gene=".", npeak="Freq") %>% arrange(desc(npeak)) %>% dplyr::mutate(gene_rank=seq_along(gene))
+  
+cutoff <- quantile(top_genes$npeak, 1-cutoff_pct)[[1]]
+
+top_genes$color <- "gray"
+top_genes[top_genes$npeak>cutoff, "color"] <- "red"
+p2 <- ggplot(top_genes, aes(x=gene_rank, y=npeak, col=color)) + geom_point() + theme_BOR() +
+    geom_hline(yintercept=cutoff,linetype = 'dashed', col = 'gray') +
+    scale_color_manual(values=c("gray", "red")) +
+    ggrepel::geom_label_repel(data=subset(top_genes, npeak>cutoff), aes(label=gene), max.overlaps = 30) +
+    theme(legend.position = "none") +
+    annotate("text", x = max(top_genes$gene_rank)*0.8, y = cutoff, label = paste0("total genes passing cutoff = ", dim(top_genes[top_genes$npeak>cutoff,])[1], "\n with n linked peaks > ", cutoff), vjust = -0.5) +
+    ggtitle("Global highly regulated genes")
+
+write.table(top_genes, paste0(out, "/abc_global_crossmetaclust_top_genes_1pct.tsv"), sep="\t", quote=F)
+
+# GO term enrichment
+all_tested_genes <- top_genes$gene
+goi <- top_genes[top_genes$npeak>cutoff,]$gene
+
+# GO BP
+upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="BP")
+goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+
+# pdf(paste0(figout, "/abc_global_crossmetaclust_top_genes_1pct.pdf"), width=10, height=10)
+print(p2)
+if(nrow(goRes)>1){
+  print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                     nterms=15, border_color="black",
+                     barwidth=0.85, title="Global highly regulated genes GO BP enrichment"))
+}
+ # GO MF
+upGO <- calcTopGo(all_tested_genes, interestingGenes=goi, nodeSize=5, ontology="MF")
+goRes <- upGO[order(as.numeric(upGO$pvalue), decreasing=FALSE),]
+if(nrow(goRes)>1){
+  print(topGObarPlot(goRes, cmap = cmaps_BOR$comet,
+                     nterms=15, border_color="black",
+                     barwidth=0.85, title="Global highly regulated genes GO MF enrichment"))
+}
+# dev.off()
+
+
+# get the actual genes linked to each GO term
+geneList <- factor(as.integer(all_tested_genes %in% goi))
+names(geneList) <- all_tested_genes
+GOdata <- suppressMessages(new(
+            "topGOdata",
+            ontology = "BP",
+            allGenes = geneList,
+            geneSel = goi,
+            annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+            nodeSize = 50
+            ))
+saveRDS(GOdata, paste0(out, "/abc_global_crossmetaclust_top_genes_1pct_GOBP.rds"))
+
+GOdata <- suppressMessages(new(
+            "topGOdata",
+            ontology = "MF",
+            allGenes = geneList,
+            geneSel = goi,
+            annot = annFUN.org, mapping = "org.Hs.eg.db", ID = "symbol",
+            nodeSize = 50
+            ))
+saveRDS(GOdata, paste0(out, "/abc_global_crossmetaclust_top_genes_1pct_GOMF.rds"))
+
+```
+
+## plot tracks for some top global HRGs
+```{r, eval=FALSE}
+consist_loops <- readRDS(paste0(out, "/abc_global_crossmetaclust_consistent_links.rds"))
+consist_loops$color <- 1 # dummy column
+
+# add meta cluster info
+clust_meta <- read_tsv(here::here("output/02-global_analysis/02/cluster_metadata_dend_order.tsv")) %>% as.data.frame
+rownames(clust_meta) <- clust_meta$Cluster
+global_bp_obj$cell_metadata$L4_clusterName <- clust_meta[global_bp_obj$cell_metadata$L0_clusterID, "L4_clusterName"]
+
+goi <- "BCL6"
+p <- trackplot_helper_v2c(
+  gene=goi,
+  clusters=global_bp_obj$cell_metadata$L4_clusterName, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix = global_bp_obj$rna,
+  loops=consist_loops, loop_color="color",
+  flank=3e4,
+  loop_label = "consistent ABC predicted links"
+)
+ggplot2::ggsave(plot=p, paste0(figout, "/plot_global_organ_abc_linkinallmetacelltype_", goi, ".pdf"), dpi=300, width=9, height=8, units="in")
+```
+
+```{r, eval=FALSE}
+
+# split by organ
+for (organcode in unique(global_bp_obj$cell_metadata$organ)){
+  submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ==organcode)
+  p <- trackplot_helper_v2c(
+    gene=goi,
+    clusters=submeta$L3_clusterID, 
+    fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+    cell_read_counts=submeta$nFrags, 
+    transcripts=global_bp_obj$transcripts, 
+    expression_matrix = global_bp_obj$rna[,submeta$cb],
+    loops=consist_loops, loop_color="class",
+    flank=3e4,
+    loop_label = "consistent ABC predicted links"
+  )
+  print(p)
+  ggplot2::ggsave(plot=p, paste0(figout, "/plot_global_organ_abc_linkinallorgan_", goi, "_",organcode, ".pdf"), dpi=300, width=9, height=8, units="in")
+}
+
+```
+
+
+```{r, eval=FALSE}
+organcode <- "LI"
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ_code==organcode)
+p <- trackplot_helper_v2c(
+    gene="HBA2",
+    clusters=submeta$L3_clusterID, 
+    fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+    cell_read_counts=submeta$nFrags, 
+    transcripts=global_bp_obj$transcripts, 
+    expression_matrix = global_bp_obj$rna[,submeta$cb],
+    loops=global_bp_obj$loops_abc$Liver, loop_color="ABC.Score",
+    flank=3e4,
+    loop_label = "ABC Liver"
+  )
+
+ggplot2::ggsave(plot=p, paste0(figout, "/test_HBA2_liver.pdf"), dpi=300, width=9, height=8, units="in")
+
+```
+
+## find meta clusts with most consistent regulation within constituent cell types
+for a given meta clust, concatenate all ABC links from its contituent cell types, ask what percentage of links are consistent
+```{r abc_withinmetaclust_pct_consistent, fig.width=10, fig.height=6}
+output <- list()
+for (metaclust in unique(clust_meta$L4_clusterName)) {
+  print(metaclust)
+  clusts <- clust_meta %>% dplyr::filter(L4_clusterName==metaclust)
+  
+loop_df <- loops[loops$CellType %in% clusts$CellType] %>% data.frame %>% dplyr::group_by(seqnames, start, end, TargetGene) %>% dplyr::summarise(clust_count = n(), .groups = "drop") %>% arrange(desc(clust_count)) 
+   
+   tmp <- loop_df %>% dplyr::select(clust_count) %>% table %>% as.data.frame %>% dplyr::rename(nclust=".", nlink="Freq") %>% dplyr::mutate(pct_clust_within_metaclust_with_link=as.numeric(nclust)/nrow(clusts), pct_total_links=nlink/nrow(loop_df), metaclust=metaclust)
+  output[[metaclust]] <- tmp
+}
+output <- do.call(rbind, output)
+
+# metaclusts with more than 1 constituent cluster
+metaclusts_multiclusts <- table(clust_meta$L4_clusterName)[table(clust_meta$L4_clusterName) > 1] %>% names()
+
+ggplot(output %>% dplyr::filter(pct_clust_within_metaclust_with_link==1 & (metaclust %in% metaclusts_multiclusts)), aes(x=metaclust, y=pct_total_links)) + geom_col() +
+    rotate_x_labels() + ggtitle("% of ABC links consistent across all constituent cell types")
+
+```
+
+```{r abc_withinmetaclust_pct_consistent_vs_nclusts, fig.width=10, fig.height=10}
+ggplot(output %>% dplyr::filter(pct_clust_within_metaclust_with_link==1), aes(x=as.numeric(nclust), y=pct_total_links, label=metaclust)) +
+    rotate_x_labels() + ggtitle("% of consistent links vs # constituent clusters") + geom_label(nudge_y=0.05) + geom_point() + theme(legend.position="none")
+```
+

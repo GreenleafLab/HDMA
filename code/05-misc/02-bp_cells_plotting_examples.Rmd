@@ -1,0 +1,327 @@
+---
+title: "Examples of using the HDMA BPCells object for plotting tracks"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE}
+
+# **MODIFY THIS CHUNK**
+project_id  <- "HDMA-public" # determines the name of the cache folder
+doc_id      <- "05-misc/02" # determines name of the subfolder of `figures` where pngs/pdfs are saved
+out         <- here::here("output/", doc_id); dir.create(out, recursive = TRUE)
+figout      <- here::here("figures/", doc_id, "/")
+script_path <- here::here("code/utils/")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Here we use the BPCells objects to quickly visualize genomic tracks at different scales.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+# libraries
+library(rtracklayer)
+library(GenomicRanges)
+library(glue)
+library(BPCells)
+library(ggseqlogo)
+suppressPackageStartupMessages({
+  library(tidyverse)
+  library(patchwork)
+  library(here)
+  library(BSgenome.Hsapiens.UCSC.hg38)
+})
+
+# shared project scripts/functions
+scriptPath <- here::here("code/utils")
+source(paste0(scriptPath, "/track_helpers_BL.R"))
+source(paste0(scriptPath, "/track_helpers_SJ.R"))
+source(paste0(scriptPath, "/trackplots.R")) # BPCells trackplot helpers in dev
+
+```
+
+# Read in the HDMA BPCells object
+```{r}
+# read global BPCells object
+global_bp_obj <- readRDS(paste0(here::here("output/05-misc/01"), "/global_bp_obj.rds"))
+```
+
+## important note about file location
+If the ATAC_merged/ RNA_merged/ RNA_raw_merged/ paths containing BPCells files are moved in the file system, must re-add to BPCells object. This is because BPCells stores raw data on disk and the BPCells objects are linked to folders on disk.
+
+```{r}
+# global_bp_obj$frags <- open_fragments_dir("/your/new/path/to/ATAC_merged/")
+# global_bp_obj$rna <- open_matrix_dir("/your/new/path/to/RNA_merged/")
+# global_bp_obj$rna_raw <- open_matrix_dir("/your/new/path/to/RNA_raw_merged/")
+# saveRDS(global_bp_obj, paste0(out, "/global_bp_obj.rds"))
+```
+
+# Example 1: gene
+plot a gene, cluster by organ, coverage tracks only
+this should take less than 1min
+```{r example1, fig.width=8, fig.height=6}
+p1 <- trackplot_helper_v2c(
+  gene="ONECUT1",
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  flank=1e5
+)
+p1
+```
+
+# Example 2: region
+plot a region, cluster by organ, coverage tracks only
+note that the "flank" argument is not actually used when region is supplied instead of gene,
+if you wish to extend the window, simply give an extended region to the function
+```{r example2, fig.width=8, fig.height=6}
+p2 <- trackplot_helper_v2c(
+  region="chr15:52730000-52820000",
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts
+)
+p2
+```
+
+# Example 3: decontaminated gene expression + P2G loops
+plot a gene, smaller window, cluster by organ, coverage + decontXed expression + peak2gene loops
+```{r example3, fig.width=8, fig.height=6}
+p3 <- trackplot_helper_v2c(
+  gene="ONECUT1", 
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  flank=2e4, 
+  expression_matrix=global_bp_obj$rna, 
+  loops=global_bp_obj$loops_p2g$global, 
+  loop_color="Correlation", 
+  loop_label = "Peak2Gene Links (global)"
+)
+p3
+```
+
+# Example 4: raw gene expression
+plot a region, smaller window, cluster by organ, coverage + raw RNA expression 
+```{r example4, fig.width=8, fig.height=6}
+p4 <- trackplot_helper_v2c(
+  region="chr15:52730000-52820000",
+  gene="ONECUT1", 
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix=global_bp_obj$rna_raw
+)
+p4
+```
+
+# Example 5: subsetting by organ + ABC loops
+filter to eye clusters only, cluster by cell type, coverage + decontXed expression + ABC loops linked in eye clusters
+```{r example5, fig.width=8, fig.height=6}
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ=="Eye")
+p5 <- trackplot_helper_v2c(
+  region="chr15:52730000-52820000",
+  gene="ONECUT1", 
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  expression_matrix=global_bp_obj$rna[,submeta$cb], 
+  loops=global_bp_obj$loops_abc$Eye, 
+  loop_color="ABC.Score", 
+  loop_label = "ABC predictions (Eye)"
+)
+p5
+```
+
+# Example 6: subsetting by cell type
+filter to horizontal cells (eye) and hepatocytes (liver) only, cluster by cell type, coverage + decontXed expression + ABC loops linked in eye or liver clusters
+```{r example6, fig.width=8, fig.height=6}
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(archive_L2_clusterName %in% c("hepatocyte", "horizontal"))
+p6 <- trackplot_helper_v2c(
+  region="chr15:52730000-52820000",
+  gene="ONECUT1", 
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  loops=c(global_bp_obj$loops_abc$Eye, global_bp_obj$loops_abc$Liver), 
+  loop_color="ABC.Score", 
+  expression_matrix=global_bp_obj$rna[,submeta$cb], 
+  loop_label = "ABC predictions (Eye&Liver)"
+)
+p6
+```
+
+# Example 7: highlight regions
+plot a region, cluster by organ, coverage tracks only, add a highlight region
+```{r example7, fig.width=8, fig.height=6}
+p7 <- trackplot_helper_v2c(
+  region="chr15:52730000-52820000",
+  highlights=gr_to_highlight(GRanges(c("chr15:52731000-52735000","chr15:52790000-52791000"))),
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts
+)
+p7
+```
+
+# Example 8: peak annotations
+```{r example8, fig.width=8, fig.height=6}
+p8 <- trackplot_helper_v2c(
+  region="chr15:52785000-52790000",
+  clusters=global_bp_obj$cell_metadata$organ, 
+  fragments=global_bp_obj$frags, 
+  cell_read_counts=global_bp_obj$cell_metadata$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  annot=global_bp_obj$peaks$global,
+  annot_color="score",
+  annot_labelby="peak_name",
+  annot_label="Global peaks"
+)
+p8
+```
+
+# Example 9: motif hits annotations
+add motif annotations from eye horizontal cells, plot the horizontal cell cluster only 
+```{r example9, fig.width=8, fig.height=6}
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(archive_L2_clusterName %in% c("hepatocyte", "horizontal"))
+p9 <- trackplot_helper_v2c(
+  region="chr15:52789730-52789950",
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts,
+  annot=global_bp_obj$hits$Eye_c11,
+  annot_color="score",
+  annot_labelby="name",
+  annot_strand=T, # careful that if the width of the annotation is too narrow, showing strand will run into an error
+  annot_label="Eye horizontal cells hits"
+)
+p9
+```
+
+# Example 10: overlapping motif annotations
+```{r example10, fig.width=8, fig.height=6}
+submeta <- global_bp_obj$cell_metadata %>% dplyr::filter(archive_L2_clusterName %in% c("hepatocyte", "horizontal"))
+p10 <- trackplot_helper_v2c(
+  region="chr15:52780500-52780800",
+  clusters=submeta$archive_L3_clusterID, 
+  fragments=global_bp_obj$frags %>% select_cells(submeta$cb), 
+  cell_read_counts=submeta$nFrags, 
+  transcripts=global_bp_obj$transcripts, 
+  annot=global_bp_obj$hits$Eye_c11,
+  annot_color="score",
+  annot_labelby="name",
+  annot_strand=TRUE, # careful that if the width of the annotation is too narrow, showing strand will run into an error
+  annot_label="Eye horizontal cells hits"
+)
+p10
+```
+# Example 11: ChromBPNet contribution scores
+add chrombpnet contribution score seqlogo annotations, around mm101 enhancer in liver
+
+## load chrombpnet contribution scores
+Contribution score bigwigs are not stored in the global_bp_obj.rds object because they are too big. Access bigwigs on disk.
+```{r}
+cluster_meta <- global_bp_obj$cell_metadata
+sub_meta <- global_bp_obj$cell_metadata %>% dplyr::filter(organ=="Liver") 
+sub_meta$archive_L2_clusterName <- factor(sub_meta$archive_L2_clusterName, levels=c( "erythroblast", "cycling erythroblast", "early erythroblast", "Kupffer", "B cell progenitor", "cholangiocyte", "endothelial", "hepatocyte", "megakaryocyte", "stellate"))
+
+region <- "chr16:105080-105200" # zoomed in mm101
+track_contribs_list <- list()
+for (L2_cluster in levels(sub_meta$archive_L2_clusterName)){
+  print(L2_cluster)
+  L1_clusters <- sub_meta[sub_meta$archive_L2_clusterName==L2_cluster, "Cluster_chrombpnet"] %>% unique
+  bw_contrib_list <- list()
+  for (clust in L1_clusters){
+    # load contribution scores
+    print(paste0("loading contrib scores from ", clust))
+    bw_contrib_list[[clust]] <- rtracklayer::import.bw(glue(here::here("output/03-chrombpnet/01-models/contribs/bias_Heart_c0_thresh0.4/{clust}/average_shaps.counts.bw")), selection=BigWigSelection(GRanges(region))) %>% as.data.frame 
+  }
+  tmp <- do.call(rbind, bw_contrib_list)
+  bw_contrib <- tmp %>% dplyr::group_by(seqnames,start,end, width, strand) %>% dplyr::summarise(score=mean(score)) %>% GRanges
+  
+  track_contribs_list[[L2_cluster]] <- trackplot_contribs_BL(bw_contrib,
+                                       region = region, 
+                                       track_label = NULL,
+                                       facet_label = L2_cluster,
+                                       genome = BSgenome.Hsapiens.UCSC.hg38,
+                                       rel_height = 1,
+                                       ymax = 0.25, ymin=-0.039,
+                                       ) + xlab(NULL)
+}
+
+```
+## plot tracks
+```{r example11, fig.width=8, fig.height=6}
+region <- "chr16:105080-105200" # zoomed in mm101
+track_genes <- trackplot_gene(global_bp_obj$transcripts, region) + ggplot2::guides(color = "none")
+scale_plot <- trackplot_scalebar(region)
+track_hits <- trackplot_genome_annotation(loci = global_bp_obj$hits[["Liver_c0"]],
+                            region = region,
+                            color_by = "score",
+                            show_strand = T,
+                            colors = c("white", "red"), 
+                            label_size = 3,
+                            label_by = "name",
+                            track_label = "Instances")
+plot_list <- list(track_genes + highlight_region(region, alpha = 0.4, color = "yellow"), track_hits)
+p <- trackplot_combine(c(list(scale_plot), track_contribs_list, plot_list),
+                  title = str_to_pretty(region)) &
+  ggplot2::theme(legend.direction = "vertical")
+p
+# ggsave(plot=p, paste0(figout, "contrib_scores_mm101.pdf"), width=8, height=6)
+```
+
