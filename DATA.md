@@ -12,22 +12,22 @@ or computed
 
 Contents:
 
-- [Downloading data from Zenodo](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#downloading-data-from-zenodo)
-  - [General use](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#general-use)
-  - [e.g. get trained ChromBPNet models for brain cell types](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#example-get-trained-chrombpnet-models-for-brain-cell-types)
-  - [e.g. get the Seurat object for brain tissue](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#example-get-the-seurat-object-for-brain-tissue)
-  - [e.g. get all fragment files](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#example-get-all-fragment-files)
-  - [e.g. get bigwigs for all immune cell types](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#example-get-bigwigs-for-all-immune-cell-types)
-- [Fragment files and count matrices](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#fragment-files-and-count-matrices)
-- [Seurat objects](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#seurat-objects)
-- [ArchR projects](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#archr-projects)
-- [BPCells object](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#bpcells-object)
-- [Trained ChromBPNet models](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#trained-chrombpnet-models)
-- [ChromBPNet mean contribution scores](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#chrombpnet-mean-contribution-scores)
-- [Bigwig tracks for observed and predicted accessibility and contrib. scores](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#bigwig-tracks-for-observed-and-predicted-accessibility-and-contrib-scores)
-- [Motif lexicon and motifs per cell type](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#motif-lexicon-and-motifs-per-cell-type)
-- [Motif instances](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#motif-instances)
-- [Genomic tracks on the WashU Genome Browser](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#genomic-tracks-on-the-washu-genome-browser)
+- [Downloading data from Zenodo](https://greenleaflab.github.io/HDMA/DATA.html#downloading-data-from-zenodo)
+  - [General use](https://greenleaflab.github.io/HDMA/DATA.html#general-use)
+  - [e.g. get trained ChromBPNet models for brain cell types](https://greenleaflab.github.io/HDMA/DATA.html#example-get-trained-chrombpnet-models-for-brain-cell-types)
+  - [e.g. get the Seurat object for brain tissue](https://greenleaflab.github.io/HDMA/DATA.html#example-get-the-seurat-object-for-brain-tissue)
+  - [e.g. get all fragment files](https://greenleaflab.github.io/HDMA/DATA.html#example-get-all-fragment-files)
+  - [e.g. get bigwigs for all immune cell types](https://greenleaflab.github.io/HDMA/DATA.html#example-get-bigwigs-for-all-immune-cell-types)
+- [Fragment files and count matrices](https://greenleaflab.github.io/HDMA/DATA.html#fragment-files-and-count-matrices)
+- [Seurat objects](https://greenleaflab.github.io/HDMA/DATA.html#seurat-objects)
+- [ArchR projects](https://greenleaflab.github.io/HDMA/DATA.html#archr-projects)
+- [BPCells object](https://greenleaflab.github.io/HDMA/DATA.html#bpcells-object)
+- [Trained ChromBPNet models](https://greenleaflab.github.io/HDMA/DATA.html#trained-chrombpnet-models)
+- [ChromBPNet mean contribution scores](https://greenleaflab.github.io/HDMA/DATA.html#chrombpnet-mean-contribution-scores)
+- [Bigwig tracks for observed and predicted accessibility and contrib. scores](https://greenleaflab.github.io/HDMA/DATA.html#bigwig-tracks-for-observed-and-predicted-accessibility-and-contrib-scores)
+- [Motif lexicon and motifs per cell type](https://greenleaflab.github.io/HDMA/DATA.html#motif-lexicon-and-motifs-per-cell-type)
+- [Motif instances](https://greenleaflab.github.io/HDMA/DATA.html#motif-instances)
+- [Genomic tracks on the WashU Genome Browser](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser)
 
 
 ## Downloading data from Zenodo

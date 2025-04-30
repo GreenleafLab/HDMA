@@ -5,16 +5,16 @@
 This repository accompanies the preprint **_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_** (Liu\*, Jessa\*, Kim\*, Ng\*, et al, bioRxiv, 2025).
 
 - You can view a rendered version [here](https://greenleaflab.github.io/HDMA/)
-- This repository contains primarily code, see the [Data availability section](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#data-availability) for links to data
-- Jump to the [Code to reproduce figures](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#code-to-produce-the-figures) section for links to code and rendered HTMLs for analysis presented in each figure
+- This repository contains primarily code, see the [Data availability section](https://greenleaflab.github.io/HDMA/#data-availability) for links to data
+- Jump to the [Code to reproduce figures](https://greenleaflab.github.io/HDMA/#code-to-produce-the-figures) section for links to code and rendered HTMLs for analysis presented in each figure
 
 ## Contents
 
-- [Codebase](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#codebase)
-- [Code to produce the figures](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#code-to-produce-the-figures)
-- [Data availability](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#data-availability)
-- [Vignettes](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#vignettes)
-- [Citation](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#citation)
+- [Codebase](https://greenleaflab.github.io/HDMA/#codebase)
+- [Code to produce the figures](https://greenleaflab.github.io/HDMA/#code-to-produce-the-figures)
+- [Data availability](https://greenleaflab.github.io/HDMA/#data-availability)
+- [Vignettes](https://greenleaflab.github.io/HDMA/#vignettes)
+- [Citation](https://greenleaflab.github.io/HDMA/#citation)
 
 
 
@@ -90,7 +90,7 @@ The links in the Analysis column lead to rendered HTMLs, where possible, and the
 
 All data and analysis products (including fragment files, counts matrices, cell annotations, global acCRE annotations, ChromBPNet models, motif lexicon, motif instances, and genomic tracks) are deposited at https://zenodo.org/communities/hdma. A list of all data types and the corresponding URL and DOI is provided in Table S14 of the manuscript.
 
-We provide a detailed description of the main data types deposited on Zenodo at [`DATA.md`](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md),
+We provide a detailed description of the main data types deposited on Zenodo [here](https://greenleaflab.github.io/HDMA/DATA.html),
 along with a demonstration of how to programmatically download files of interest.
 
 All genomic tracks are also hosted online for interactive visualization with the WashU
