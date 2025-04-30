@@ -4,7 +4,7 @@
 
 This repository accompanies the preprint **_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_** (Liu\*, Jessa\*, Kim\*, Ng\*, et al, bioRxiv, 2025).
 
-- You can view a rendered version [here](https://greenleaflab.github.io/HDMA/)
+- The repository is on GitHub [here](https://github.com/GreenleafLab/HDMA) and you can view a rendered version [here](https://greenleaflab.github.io/HDMA/)
 - This repository contains primarily code, see the [Data availability section](https://greenleaflab.github.io/HDMA/#data-availability) for links to data
 - Jump to the [Code to reproduce figures](https://greenleaflab.github.io/HDMA/#code-to-produce-the-figures) section for links to code and rendered HTMLs for analysis presented in each figure
 
