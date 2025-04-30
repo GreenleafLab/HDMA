@@ -4,6 +4,10 @@
 
 This repository accompanies the preprint **_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_** (Liu\*, Jessa\*, Kim\*, Ng\*, et al, bioRxiv, 2025).
 
+- You can view a rendered version [here](https://greenleaflab.github.io/HDMA/)
+- This repository contains primarily code, see the [Data availability section](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#data-availability) for links to data
+- Jump to the [Code to reproduce figures](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#code-to-produce-the-figures) section for links to code and rendered HTMLs for analysis presented in each figure
+
 ## Contents
 
 - [Codebase](https://github.com/GreenleafLab/HDMA?tab=readme-ov-file#codebase)
@@ -59,22 +63,22 @@ However, it is not a fully executable workflow.
 ## Code to produce the figures
 
 Code to reproduce analyses is saved in `code`. This table contains pointers to code for the key analyses associated with each figure.
-Where possible, the links in the Analysis column lead to rendered HTMLs.
+The links in the Analysis column lead to rendered HTMLs, where possible, and the links in the Path column lead to scripts or notebooks within the repository.
 
 | Figure | Analysis | Path |
 | --- | -------- | ---- | 
-| Fig 1b, Fig S2b,c | Global QC and metadata | [`code/02-global_analysis/01-global_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/01-global_QC.Rmd) |
-| Fig 1c | Dendrogram and dotplot | [`code/02-global_analysis/02-dendrogram.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/02-dendrogram.Rmd) |
-| Fig 1c | ChromVAR heatmap | [`code/02-global_analysis/03-dendrogram_chromvar.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/03-dendrogram_chromvar.Rmd) |
-| Fig 2a-e, Fig S2f | ABC linking of acCREs | [`code/04-enhanceres/06-abc.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhanceres/06-abc.Rmd) |
-| Fig 2f-g, Fig S3a, Fig S4k | Analysis of VISTA-overlapping enhancers | [`code/04-enhancers/09-overlap_VISTA.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/09-overlap_VISTA.Rmd) |
-| Fig S2d-e | Overlap of acCREs with ENCODE CREs | [`code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd) |
-| Fig 3b, Fig 6a, Fig S5 | Plotting tracks at select loci | [`code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd) |
-| Fig 3c, Fig S4a,b,i,j | ChromBPNet QC | [`code/03-chrombpnet/01-train_models/03-model_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03-model_QC.Rmd) and [`code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb) |
-| Fig 3d-e, Fig 6b,d, Fig S4d-f, Fig S5b | Motif lexicon/compendium | [`code/03-chrombpnet/03-syntax/01-motif_compendium`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/01-motif_compendium.Rmd) | 
-| Fig S4g-h | Visualize motif instances | [`code/03-chrombpnet/03-syntax/03-visualize_hits.ipynb`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/03-visualize_hits.ipynb) | 
-| Fig 4, Fig 5a, Fig S6 | Analysis of motif cooperativity | [`code/03-chrombpnet/03-syntax/04c-plot_cooperativity_results.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/04c-plot_cooperativity_results.Rmd) |
-| Fig 5b | Context-specific motif cooperativity | [`code/03-chrombpnet/03-syntax/05b-context_specific_cooperativity.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/05b-context_specific_cooperativity.Rmd) |
+| Fig 1b, Fig S2b,c | [Global QC and metadata](https://greenleaflab.github.io/HDMA/code/02-global_analysis/01-global_QC.html) | [`code/02-global_analysis/01-global_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/01-global_QC.Rmd) |
+| Fig 1c | [Dendrogram and dotplot](https://greenleaflab.github.io/HDMA/code/02-global_analysis/02-dendrogram.html) | [`code/02-global_analysis/02-dendrogram.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/02-dendrogram.Rmd) |
+| Fig 1c | [ChromVAR heatmap](https://greenleaflab.github.io/HDMA/code/02-global_analysis/03-dendrogram_chromvar.html) | [`code/02-global_analysis/03-dendrogram_chromvar.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/03-dendrogram_chromvar.Rmd) |
+| Fig 2a-e, Fig S2f | [ABC linking of acCREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/06-abc.html) | [`code/04-enhancers/06-abc.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/06-abc.Rmd) |
+| Fig 2f-g, Fig S3a, Fig S4k | [Analysis of VISTA-overlapping enhancers](https://greenleaflab.github.io/HDMA/code/04-enhancers/09-overlap_VISTA.html) | [`code/04-enhancers/09-overlap_VISTA.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/09-overlap_VISTA.Rmd) |
+| Fig S2d-e | [Overlap of acCREs with ENCODE CREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/07-overlap_ENCODE_cCREs.html) | [`code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd) |
+| Fig 3b, Fig 6a, Fig S5 | [Plotting tracks at select loci](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/02-plot_tracks.html) | [`code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd) |
+| Fig 3c, Fig S4a,b,i,j | [ChromBPNet QC](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/01-train_models/03-model_QC.html) and [correlation plot](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/01-train_models/03b-plot_correlation.html) | [`code/03-chrombpnet/01-train_models/03-model_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03-model_QC.Rmd) and [`code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb) |
+| Fig 3d-e, Fig 6b,d, Fig S4d-f, Fig S5b | [Motif lexicon/compendium](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/01-motif_compendium.html) | [`code/03-chrombpnet/03-syntax/01-motif_compendium`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/01-motif_compendium.Rmd) | 
+| Fig S4g-h | [Visualize motif instances](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/03-visualize_hits.html) | [`code/03-chrombpnet/03-syntax/03-visualize_hits.ipynb`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/03-visualize_hits.ipynb) | 
+| Fig 4, Fig 5a, Fig S6 | [Analysis of motif cooperativity/synergy and syntax](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/04c-plot_cooperativity_results.html) | [`code/03-chrombpnet/03-syntax/04c-plot_cooperativity_results.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/04c-plot_cooperativity_results.Rmd) |
+| Fig 5b | [Context-specific motif cooperativity](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/05b-context_specific_cooperativity.html) | [`code/03-chrombpnet/03-syntax/05b-context_specific_cooperativity.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/05b-context_specific_cooperativity.Rmd) |
 | Fig 6f, Fig S7 | eQTL enrichment analysis | [`code/06-variants/03-enrichment_test_collate_results.R`](https://github.com/GreenleafLab/HDMA/tree/main/code/06-variants/03-enrichment_test_collate_results.R) |
 | Fig 7b | g-chromVAR analysis | [`code/06-variants/04-gchromvar.R`](https://github.com/GreenleafLab/HDMA/tree/main/code/06-variants/04-gchromvar.R) |
 | Fig 7c-d | Plot tracks for variants of interest | [`code/06-variants/07b_rs12740374_muscle_endo_CAD.R`](https://github.com/GreenleafLab/HDMA/tree/main/code/06-variants/07b_rs12740374_muscle_endo_CAD.R) and [`code/06-variants/07c_rs113892147_lung_macrophage_asthma.R`](https://github.com/GreenleafLab/HDMA/tree/main/code/06-variants/07c_rs113892147_lung_macrophage_asthma.R) |
@@ -99,9 +103,9 @@ https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-de
 We provide a few notebooks with examples of how to interact with HDMA data,
 analysis outputs, and trained models:
 
-- How to download specific files or data for specific cell types from across the Zenodo records: [`DATA.md`](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#downloading-data-from-zenodo)
-- Plotting genomic tracks using BPCells: [`code/05-misc/02-bp_cells_plotting_examples.Rmd`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/02-bp_cells_plotting_examples.Rmd)
-- Use cases for ChromBPNet models and outputs, including visualizing predicted accessibility and contribution scores at a region of interest, loading models, making new predictions, and predicting variant effect: [`code/05-misc/04-ChromBPNet_use_cases.ipynb`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/04-ChromBPNet_use_cases.ipynb)
+- How to download specific files or data for specific cell types from across the Zenodo records: [`DATA.md`](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#downloading-data-from-zenodo) ([html](https://greenleaflab.github.io/HDMA/DATA.html))
+- Plotting genomic tracks using BPCells: [`code/05-misc/02-bp_cells_plotting_examples.Rmd`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/02-bp_cells_plotting_examples.Rmd) ([html](https://greenleaflab.github.io/HDMA/code/05-misc/02-bp_cells_plotting_examples.html))
+- Use cases for ChromBPNet models and outputs, including visualizing predicted accessibility and contribution scores at a region of interest, loading models, making new predictions, and predicting variant effect: [`code/05-misc/04-ChromBPNet_use_cases.ipynb`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/04-ChromBPNet_use_cases.ipynb) ([html](https://greenleaflab.github.io/HDMA/code/05-misc/04-ChromBPNet_use_cases.html))
 
 
 ## Citation

@@ -307,7 +307,7 @@ The BPCells object was produced by the script [`code/05-misc/01-bp_cells_create_
 
 The BPCells object was primarily used for efficient plotting and visualization of genomic
 loci. See our notebook with examples for plotting using the BPCells object
-at [`code/05-misc/02-bp_cells_plotting_examples.Rmd`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/02-bp_cells_plotting_examples.Rmd).
+at [`code/05-misc/02-bp_cells_plotting_examples.Rmd`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/02-bp_cells_plotting_examples.Rmd)  ([html](https://greenleaflab.github.io/HDMA/code/05-misc/02-bp_cells_plotting_examples.html)).
 
 _**NOTE**_: the BPCells package uses on-disk storage, so the fragment files and count
 matrices in the RDS object only point to the path where the files are stored,
@@ -341,7 +341,7 @@ the total model with both submodels together.
 
 ![](img/chrombpnet.png)
 
-We show how to load and use trained ChromBPNet models in the tutorial at [`code/05-misc/04-ChromBPNet_use_cases.ipnyb`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/04-ChromBPNet_use_cases.ipynb).
+We show how to load and use trained ChromBPNet models in the tutorial at [`code/05-misc/04-ChromBPNet_use_cases.ipnyb`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/04-ChromBPNet_use_cases.ipynb) ([html](https://greenleaflab.github.io/HDMA/code/05-misc/04-ChromBPNet_use_cases.html)).
 
 
 ## ChromBPNet mean contribution scores
