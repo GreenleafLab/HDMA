@@ -88,14 +88,14 @@ The links in the Analysis column lead to rendered HTMLs, where possible, and the
 
 ## Data availability
 
-All data and analysis products (including fragment files, counts matrices, cell annotations, global acCRE annotations, ChromBPNet models, motif lexicon, motif instances, and genomic tracks) are deposited at https://zenodo.org/communities/hdma. A list of all data types and the corresponding URL and DOI is provided in Table S14 of the manuscript.
+All data and analysis products (including fragment files, counts matrices, cell annotations, global acCRE annotations, ChromBPNet models, motif lexicon, motif instances, and genomic tracks) are deposited at [https://zenodo.org/communities/hdma](https://zenodo.org/communities/hdma). A list of all data types and the corresponding URL and DOI is provided in Table S14 of the manuscript.
 
 We provide a detailed description of the main data types deposited on Zenodo [here](https://greenleaflab.github.io/HDMA/DATA.html),
 along with a demonstration of how to programmatically download files of interest.
 
 All genomic tracks are also hosted online for interactive visualization with the WashU
 Genome Browser here at this link:
-https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json.
+[https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json](https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json). We demonstrate how to load tracks [here](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser).
 
 
 ## Vignettes
