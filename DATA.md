@@ -14,6 +14,7 @@ Contents:
 
 - [Downloading data from Zenodo](https://greenleaflab.github.io/HDMA/DATA.html#downloading-data-from-zenodo)
   - [General use](https://greenleaflab.github.io/HDMA/DATA.html#general-use)
+  - [Helper function](https://greenleaflab.github.io/HDMA/DATA.html#helper-function)
   - [e.g. get trained ChromBPNet models for brain cell types](https://greenleaflab.github.io/HDMA/DATA.html#example-get-trained-chrombpnet-models-for-brain-cell-types)
   - [e.g. get the Seurat object for brain tissue](https://greenleaflab.github.io/HDMA/DATA.html#example-get-the-seurat-object-for-brain-tissue)
   - [e.g. get all fragment files](https://greenleaflab.github.io/HDMA/DATA.html#example-get-all-fragment-files)
@@ -49,6 +50,34 @@ $ zenodo_get <RECORD_ID> -w urls.txt
 $ wget -i urls.txt
 ```
 
+
+#### Helper function
+
+We will use the following function to get URLs for a set of records:
+
+```bash
+
+# given a file with Zenodo record URLs (e.g. from Table S14), one per line,
+# get get the direct URLs fo all files in each record,
+# and concatenate them into one file at urls/all_urls.txt
+get_urls() {
+
+  if [ -d urls ]; then
+    echo "Error: 'urls' folder already exists. Delete the folder to proceed."
+    return 1
+  fi
+
+  mkdir -p urls
+  while IFS= read -r line; do
+    record=$(basename "$line")
+    zenodo_get "$line" -w "urls/${record}.txt"
+  done < "$1"
+  cat urls/zenodo* > urls/all_urls.txt
+
+}
+
+```
+
 #### Example: get trained ChromBPNet models for Brain cell types
 
 ```bash
@@ -70,15 +99,13 @@ $ cut -f 1 table_s14.tsv | sort | uniq
 grep models table_s14.tsv | cut -f 5 > records.txt
 
 # get URLs for all files at these records
-while IFS= read -r line; do
-    zenodo_get $line -w >> all_urls.txt
-done < records.txt
+get_urls records.txt
 
 # get the URLs for all Brain cell types
-grep Brain all_urls.txt >> urls.txt
+grep Brain urls/all_urls.txt >> urls/brain_urls.txt
 
 # download the Brain models
-wget -i urls.txt
+wget -i urls/brain_urls.txt
 ```
 
 #### Example: get the Seurat object for brain tissue
@@ -87,16 +114,14 @@ wget -i urls.txt
 # get the records containing Seurat objects
 grep Seurat table_s14.tsv | cut -f 5 > records.txt
 
-# get URLs for all files at these records
-while IFS= read -r line; do
-    zenodo_get $line -w >> all_urls.txt
-done < records.txt
+# get the URLs for all files at these records
+get_urls records.txt
 
 # get the URL for the Brain object
-grep Brain all_urls.txt >> urls.txt
+grep Brain urls/all_urls.txt >> urls/brain_urls.txt
 
 # download the Brain object
-wget -i urls.txt
+wget -i urls/brain_urls.txt
 ```
 
 #### Example: get all fragment files
@@ -106,15 +131,13 @@ wget -i urls.txt
 grep Fragments table_s14.tsv | cut -f 5 > records.txt
 
 # get URLs for all files at these records
-while IFS= read -r line; do
-    zenodo_get $line -w >> all_urls.txt
-done < records.txt
+get_urls records.txt
 
 # get the URLs for all fragments and fragment index files
-grep fragments all_urls.txt >> urls.txt
+grep fragments urls/all_urls.txt >> urls/fragment_urls.txt
 
 # download the fragments files & indices
-wget -i urls.txt
+wget -i urls/fragment_urls.txt
 ```
 
 #### Example: get bigwigs for all immune cell types
@@ -124,9 +147,7 @@ wget -i urls.txt
 grep Bigwigs table_s14.tsv | cut -f 5 > records.txt
 
 # get URLs for all files at these records
-while IFS= read -r line; do
-    zenodo_get $line -w >> all_urls.txt
-done < records.txt
+get_urls records.txt
 
 # preview the columns in Table S2
 $ head -n2 table_s2.tsv
@@ -135,10 +156,10 @@ $ head -n2 table_s2.tsv
 
 # get all cell types where compartment == "imm", extract the Cluster_ChromBPNet column value,
 # and get the URLs matching those IDs
-awk -F'\t' '$5 == "imm" { print $19 }' table_s2.tsv | grep -f - all_urls.txt > urls.txt
+awk -F'\t' '$5 == "imm" { print $19 }' table_s2.tsv | grep -f - urls/all_urls.txt > urls/imm_urls.txt
 
 # download the bigwigs for immune cell types
-wget -i urls.txt
+wget -i urls/imm_urls.txt
 ```
 
 
