@@ -1,7 +1,7 @@
 # Data download and descriptions
 
 This file provides more detailed description of the data and analysis products deposited on Zenodo at
-https://zenodo.org/communities/hdma, and demonstrates how to programmatically search for
+[https://zenodo.org/communities/hdma](https://zenodo.org/communities/hdma), and demonstrates how to programmatically search for
 and download specific files.  
 
 - A description of all data types and the corresponding URL
