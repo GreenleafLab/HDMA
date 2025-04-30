@@ -1,4 +1,4 @@
-# Human Development Multiome Atlas
+# Human Development Multiomic Atlas
 
 ![](img/hdma_logo_small.png)
 
