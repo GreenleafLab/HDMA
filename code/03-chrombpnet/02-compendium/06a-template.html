@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FiNeMo Report</title>
+    <style>
+        /* Adapted from https://github.com/oxalorg/sakura/ */
+        html {
+            font-size: 62.5%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+        }
+        
+        body {
+            font-size: 1.8rem;
+            line-height: 1.618;
+            max-width: 60em;
+            margin: auto;
+            color: #222222;
+            background-color: #ffffff;
+            padding: 13px;
+        }
+        
+        @media (max-width: 684px) {
+        body {
+            font-size: 1.53rem;
+        }
+        }
+        @media (max-width: 382px) {
+        body {
+            font-size: 1.35rem;
+        }
+        }
+        h1, h2, h3, h4, h5, h6 {
+            line-height: 1.1;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            font-weight: 700;
+            margin-top: 3rem;
+            margin-bottom: 1.5rem;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            -ms-word-break: break-all;
+            word-break: break-word;
+        }
+        
+        h1 {
+            font-size: 2.35em;
+        }
+        
+        h2 {
+            font-size: 1.75em;
+        }
+        
+        h3 {
+            font-size: 1.25em;
+        }
+        
+        p {
+            margin-top: 0px;
+            margin-bottom: 2.5rem;
+        }
+        
+        small, sub, sup {
+            font-size: 75%;
+        }
+        
+        hr {
+            border-color: #007559;
+        }
+        
+        a {
+            text-decoration: none;
+            color: #007559;
+        }
+        a:visited {
+            color: #004232;
+        }
+        a:hover {
+            color: #006994;
+            border-bottom: 2px solid #222222;
+        }
+        
+        ul {
+            padding-left: 1.4em;
+            margin-top: 0px;
+            margin-bottom: 2.5rem;
+        }
+        
+        li {
+            margin-bottom: 0.4em;
+        }
+        
+        blockquote {
+            margin-left: 0px;
+            margin-right: 0px;
+            padding-left: 1em;
+            padding-top: 0.8em;
+            padding-bottom: 0.8em;
+            padding-right: 0.8em;
+            border-left: 5px solid #007559;
+            margin-bottom: 2.5rem;
+            background-color: #f7f7f7;
+        }
+        
+        blockquote p {
+            margin-bottom: 0;
+        }
+        
+        img, video {
+            height: auto;
+            max-width: 100%;
+            margin-top: 0px;
+            margin-bottom: 2.5rem;
+        }
+        
+        /* Pre and Code */
+        pre {
+            background-color: #f7f7f7;
+            display: block;
+            padding: 1em;
+            overflow-x: auto;
+            margin-top: 0px;
+            margin-bottom: 2.5rem;
+            font-size: 0.9em;
+        }
+        
+        code, kbd, samp {
+            font-size: 0.9em;
+            padding: 0 0.5em;
+            background-color: #f7f7f7;
+            white-space: pre-wrap;
+            }
+        
+        pre > code {
+            padding: 0;
+            background-color: transparent;
+            white-space: pre;
+            font-size: 1em;
+        }
+        
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 2rem;
+            font-variant-numeric: tabular-nums;
+            text-align: justify;
+        }
+
+        td, th {
+            padding: 0.5em;
+            border-bottom: 1px solid #f1f1f1;
+        }
+
+        .num_col {
+            text-align: right;
+        }
+
+        td.num_col {
+            padding-left: 2em;
+        }
+
+        th.cwm, th.distplot {
+            padding-left: 2em;
+        }
+
+        .cwm img {
+            max-width: unset;
+            margin-bottom: 0
+        }
+
+        .distplot img {
+            margin-bottom: 0
+        }
+        
+    </style>
+</head>
+
+<body>
+<h1>FiNeMo hit calling report [w/ unified MoDISco input motif set]</h1>
+
+<h2>TF-MoDISco seqlet comparisons</h2>
+<p>
+    The following figures and statistics compare the called hits with the seqlets used by TF-MoDISco to construct each motif. Key terms:
+    <ul>
+    <li><strong>Merged motif</strong>: Motif which has been derived by merging or collapsing similar component motifs learned from individual MoDISco runs from different ChromBPnet models. These are what was used for hit calling.</li>
+    <li><strong>Component motif</strong>: A motif learned from running MoDISco on the contribution scores for one ChromBPNet model (or more likely, contrib. scores averaged across models trained on five chromosome folds.)</li>
+    </ul>
+    In general, in this report, "motif" refers to a merged motif. 
+</p>
+
+
+<p>
+    Overall <strong>{{ n_motifs }} different motifs had at least one hit in this dataset.</strong>
+</p>
+
+<p>
+    {{ drop_str }}
+</p>
+
+<h3>Hit vs. seqlet counts</h3>
+<p>
+    This figure shows the number of hits called vs. the number of TF-MoDISco seqlets identified for each motif. 
+    This applies only to the motifs which were discovered from TF-MoDISco in this particular model (and thus have seqlets).
+    Motifs from other models, which were still used for hit calling, won't have associated seqlets.
+    The hit counts should be greater than the corresponding seqlet counts, since TF-MoDISco stringently filters seqlets and usually uses a smaller input window. 
+    The dashed line is the identity line. 
+</p>
+<img src="hits_vs_seqlet_counts.png" width="780">
+
+
+<h3>Hit vs. restricted hits</h3>
+<p>
+    This figure shows the number of hits vs. restrictd hits, which are hits that fall into the more narrow MoDISco windows.
+</p>
+<img src="hits_vs_restricted_hits.png" width="780">
+
+<h2>Hits per motif</h2>
+<p>
+    This figure shows the number of hits per motif. Bars in green correspond to motifs which correspond
+    to a motif discovered in this model through its original MoDISco run (although the merged motif may incorporate motifs
+    from multiple models).
+</p>
+<img src="hits_per_motif.png" width="1200" height="400">
+
+
+
+<h3>CWMs and seqlet recall</h3>
+<p>
+    For each motif, this table examines the consistency between hits, MoDISco CWMs used as input, and TF-MoDISco seqlets, for the top K most frequent motifs based on hits. 
+</p>
+<p>
+    The following statistics report the number of hits, seqlets, and their relationships: 
+</p>
+<ul>
+    <li><strong>Hits</strong>: The number of hits called by FiNeMo</li>
+    <li><strong>Restricted Hits</strong>: The number of FiNeMo hits within the TF-MoDISco input regions</li>
+    <li><strong>Seqlets</strong>: The number of unique TF-MoDISco seqlets</li>
+    <li><strong>Hit/Seqlet Overlaps</strong>: The number of hits that coincide with TF-MoDISco seqlets</li>
+    <li><strong>Missed Seqlets</strong>: The number of TF-MoDISco seqlets not called as hits</li>
+    <li><strong>Additional Restricted Hits</strong>: The number of hits within the TF-MoDISco input regions that were not identified as seqlets by TF-MoDISco</li>
+    <li><strong>Seqlet Recall</strong>: The fraction of seqlets that are called as hits</li>
+    <li><strong>Hit-MoDISco Correlation</strong>: The Pearson correlation between the hits CWM and MoDISco CWM across all seqlets</li>
+    <li><strong>Hit-Seqlet Correlation</strong>: The Pearson correlation between the additional-restricted-hits CWM and the seqlet CWM</li>
+</ul>
+<p>
+    Note that the seqlet counts here may be lower than those shown in the tfmodisco-lite report due to double-counting in overlapping regions.
+    The seqlet counts shown here are after de-duplication, while the counts in the tfmodisco-lite report are not de-duplicated.
+</p>
+<p>
+    Note that palindromic motifs may have lower recall due to disagreements on orientation.
+    If seqlet recall is near zero for all motifs, the <code>-W/--modisco-region-width</code> argument is likely incorrect.
+    Seqlet recall is expected to be 0 for some merged motifs, if that merged motif does not include a component motif from this celltype/model, and thus there will be no associated seqlets.
+</p>
+<p>
+    The hit-modisco correlation is the Pearson correlation between the hits CWM and the MoDISco CWM used for hit calling. 
+    This statistic measures the similarity between hits and the seqlets (from all models) used to construct the unified motif.
+</p>
+<p>
+    The hit-seqlet correlation is the Pearson correlation between the additional-restricted-hits CWM and the seqlet CWM. 
+    This statistic measures the similarity between hits that were missed by TF-MoDISco and the seqlets (from this model) used to construct the motif.
+</p>
+<p>
+    CWMs (contribution weight matrices) are average contribution scores over a set of regions. The CWMs shown here are:
+</p>
+<ul>
+    <li><strong>Hit CWM (FC)</strong>: The forward-strand CWM of all hits</li>
+    <li><strong>Hit CWM (RC)</strong>: The reverse-strand CWM of all hits</li>
+    <li><strong>Modisco CWM (FC)</strong>: The forward-strand CWM from the unified MoDISco object.</li>
+    <li><strong>Modisco CWM (RC)</strong>: The reverse-strand CWM from the unified MoDISco object.</li>
+    <li><strong>Seqlet CWM</strong>: The CWM of all TF-MoDISco seqlets</li>
+    <li><strong>Missed-Seqlet-Only CWM</strong>: The CWM of all TF-MoDISco seqlets that were not called as hits</li>
+    <li><strong>Additional-Restricted-Hit CWM</strong>: The CWM of all hits within the TF-MoDISco input regions that were not identified as seqlets by TF-MoDISco</li>
+
+
+<table class="wide_table">
+    <thead>
+        <tr>
+            <th>Motif Name</th>
+            <th>Annotation</th>
+            <th class="num_col">Hits</th>
+            <th class="num_col">Restricted Hits</th>
+            <th class="num_col">Hit-MoDISco Correlation</th>
+            <th class="num_col">Hit-Seqlet Correlation</th>
+            <th class="num_col">Seqlet Recall</th>
+            <th class="num_col">Seqlets</th>
+            <th class="num_col">Hit/Seqlet Overlaps</th>
+            <th class="num_col">Missed Seqlets</th>
+            <th class="num_col">Additional Restricted Hits</th>
+            <th class="cwm">Hit CWM (FC)</th>
+            <th class="cwm">Hit CWM (RC)</th>
+            <th class="cwm">Modisco CWM (FC)</th>
+            <th class="cwm">Modisco CWM (RC)</th>
+            <th class="cwm">Seqlet CWM</th>
+            <th class="cwm">Missed-Seqlet-Only CWM</th>
+            <th class="cwm">Additional-Restricted-Hit CWM</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in seqlet_recall_data %}
+        <tr>
+            <td><code>{{ item.motif_name }}</code></td>
+            <td><code>{{ item.annotation }}</code></td>
+            <td class="num_col">{{ item.num_hits_total }}</td>
+            <td class="num_col">{{ item.num_hits_restricted }}</td>
+            <td class="num_col">{{ '%0.3f'| format(item.hits_modisco_cwm_correlation|float) }}</td>
+            <td class="num_col">{{ '%0.3f'| format(item.hits_restricted_seqlets_cwm_correlation|float) }}</td>
+            <td class="num_col">{{ '%0.3f'| format(item.seqlet_recall|float) }}</td>
+            <td class="num_col">{{ item.num_seqlets }}</td>
+            <td class="num_col">{{ item.num_overlaps }}</td>
+            <td class="num_col">{{ item.num_seqlets_only }}</td>
+            <td class="num_col">{{ item.num_hits_restricted_only }}</td>
+            <td class="cwm"><img src="CWMs/{{ item.motif_name }}/hits_fc.png" width="240"></td>
+            <td class="cwm"><img src="CWMs/{{ item.motif_name }}/hits_rc.png" width="240"></td>
+            <td class="cwm"><img src="CWMs/{{ item.motif_name }}/modisco_fc.png" width="240"></td>
+            <td class="cwm"><img src="CWMs/{{ item.motif_name }}/modisco_rc.png" width="240"></td>
+            <td class="cwm">{{ render_image_tag(out_dir,item.motif_name,"seqlets_fc") }}</td>
+            <td class="cwm">{{ render_image_tag(out_dir,item.motif_name,"seqlets_only") }}</td>
+            <td class="cwm">{{ render_image_tag(out_dir,item.motif_name,"hits_restricted_only") }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2>Hit distributions</h2>
+<p>
+    The following figures visualize the distribution of hits across motifs and peaks. 
+</p>
+
+<h3>Overall distribution of hits per peak</h3>
+<p>
+    This plot shows the distribution of hit counts per peak for any motif.
+    The number of peaks with no hits should be near zero. 
+</p>
+<img src="total_hit_distribution.png" width="780">
+
+
+<h3>Per-motif distributions of hits per peak</h3>
+<p>
+    These plots show the distribution of hit counts per peak for each motif, or the top 10 most frequent motifs.
+</p>
+<table>
+    <thead>
+        <tr>
+            <th>Motif Name</th>
+            <th class="distplot">Hits Per Peak</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for m in motif_names %}
+        <tr>
+            <td><code>{{ m }}</code></td>
+            <td class="distplot"><img src="motif_hit_distributions/{{ m }}.png" width="200"></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+
+<h3>Motif co-occurrence</h3>
+<p>
+    This heatmap shows the co-occurrence of motifs across peaks, for the top k most frequent motifs.
+    The color intensity here represents the pearson correlation between the motifs' occurrence across peaks,
+    where occurence is defined as the presence of a hit for a motif in a peak.
+</p>
+<img src="motif_cooccurrence.png" width="1500">
+
+    
+</body>
+</html>
