@@ -2,7 +2,7 @@
 
 ![](img/hdma_logo_small.png)
 
-This repository accompanies the preprint **_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_** (Liu\*, Jessa\*, Kim\*, Ng\*, ..., Kundaje+, Farh+, Greenleaf+, bioRxiv, 2025).
+This repository accompanies the preprint [**_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_**](https://www.biorxiv.org/content/10.1101/2025.04.30.651381v1) (Liu\*, Jessa\*, Kim\*, Ng\*, ..., Kundaje+, Farh+, Greenleaf+, bioRxiv, 2025).
 
 \* _equal contribution_  
 \+ _co-corresponding_
@@ -115,5 +115,5 @@ analysis outputs, and trained models:
 
 If you use this data or code, please cite:
 
-Liu\*, Jessa\*, Kim\*, Ng\*, et al. bioRxiv 2025.
+_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_. Betty B. Liu, Selin Jessa, Samuel H. Kim, Yan Ting Ng, Soon il Higashino, Georgi K. Marinov, Derek C. Chen, Benjamin E. Parks, Li Li, Tri C. Nguyen, Sean K. Wang, Austin T. Wang, Serena Y. Tan, Michael Kosicki, Len A. Pennacchio, Eyal Ben-David, Anca M. Pasca, Anshul Kundaje, Kyle K.H. Farh, William J. Greenleaf, bioRxiv 2025.04.30.651381; doi: [https://doi.org/10.1101/2025.04.30.651381](https://doi.org/10.1101/2025.04.30.651381)
 
