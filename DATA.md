@@ -106,6 +106,7 @@ grep Brain urls/all_urls.txt >> urls/brain_urls.txt
 
 # download the Brain models
 wget -i urls/brain_urls.txt
+for i in *.gz; do tar -xvf $i; done
 ```
 
 #### Example: get the Seurat object for brain tissue
@@ -340,13 +341,13 @@ more details on the compression and storage in BPCells objects.
 
 ## Trained ChromBPNet models
 
-One zipped directory per cluster, using the `Cluster_ChromBPNet` cluster ID from Table S2, named `<cluster>.gz`.
+One tar archive per cluster, using the `Cluster_ChromBPNet` cluster ID from Table S2, named `<cluster>.gz`.
 Only models which passed QC and which were used for downstream analysis are provided, thus there 
 are models for 189 cell types.
 
 The bias model was trained on Heart_c0 fold_0, 
 
-The directory for each cluster contains 15 models as weights saved as H5 files
+The tar archive for each cluster can be extracted with `tar -xvf` and contains 15 models as weights saved as H5 files
 named `<cluster>__<fold>__<model>.h5`:
 
 - `<fold>` indicates the chromosome fold
