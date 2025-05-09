@@ -14,7 +14,7 @@ Contents:
 
 - [Downloading data from Zenodo](https://greenleaflab.github.io/HDMA/DATA.html#downloading-data-from-zenodo)
   - [Programmatic download](https://greenleaflab.github.io/HDMA/DATA.html#programmatic-download)
-  - [Helper function](https://greenleaflab.github.io/HDMA/DATA.html#helper-function)
+  - [Helper script](https://greenleaflab.github.io/HDMA/DATA.html#helper-script)
   - [e.g. get trained ChromBPNet models for brain cell types](https://greenleaflab.github.io/HDMA/DATA.html#example-get-trained-chrombpnet-models-for-brain-cell-types)
   - [e.g. get the Seurat object for brain tissue](https://greenleaflab.github.io/HDMA/DATA.html#example-get-the-seurat-object-for-brain-tissue)
   - [e.g. get all fragment files](https://greenleaflab.github.io/HDMA/DATA.html#example-get-all-fragment-files)
@@ -48,7 +48,7 @@ downloading all data in a record, or fetching direct links to all files within a
 for zenodo_get, the input must be one of the versioned DOIs for the record, not the record that resolves to the latest version.
 The latter is what is provided in Table S14.)
 
-### Helper function for programmatic access
+### Helper script
 
 We will use the following helper script, `get_urls.py` for getting links to all files in a set of Zenodo records,
 from the latest version of each record.
