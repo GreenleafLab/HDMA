@@ -13,7 +13,7 @@ or computed
 Contents:
 
 - [Downloading data from Zenodo](https://greenleaflab.github.io/HDMA/DATA.html#downloading-data-from-zenodo)
-  - [General use](https://greenleaflab.github.io/HDMA/DATA.html#general-use)
+  - [Programmatic download](https://greenleaflab.github.io/HDMA/DATA.html#programmatic-download)
   - [Helper function](https://greenleaflab.github.io/HDMA/DATA.html#helper-function)
   - [e.g. get trained ChromBPNet models for brain cell types](https://greenleaflab.github.io/HDMA/DATA.html#example-get-trained-chrombpnet-models-for-brain-cell-types)
   - [e.g. get the Seurat object for brain tissue](https://greenleaflab.github.io/HDMA/DATA.html#example-get-the-seurat-object-for-brain-tissue)
@@ -33,48 +33,133 @@ Contents:
 
 ## Downloading data from Zenodo
 
-Any records on Zenodo can be downloaded by navigating to the record URL provided in Table S14 and downloading from the website.
-
-For programmatic use, we recommend the [zenodo_get](https://github.com/dvolgyes/zenodo_get) python package by David Völgyes, which allows for downloading all data in a record, or fetching direct links to all files within a record, from the command line. The record ID for each deposition is provided in Table S14.
-
-#### General use
-
-```bash
-$ zenodo_get <RECORD_ID>
-```
-
-Or, get the direct file URLs which can be downloaded with `wget` or `curl`:
-
-```bash
-$ zenodo_get <RECORD_ID> -w urls.txt
-$ wget -i urls.txt
-```
+Any records on Zenodo can be downloaded by navigating to the record URL provided in Table S14 and downloading from the webs.
 
 
-#### Helper function
+### Programmatic download
 
-We will use the following function to get URLs for a set of records:
+For programmatic access, we provide the following helper script for getting links to the latest version of all files in a set of Zenodo records,
+from the latest version of each record. This is useful since many of our data types are split across several depositions,
+and one may want to download several files across several depositions. We also provide some examples
+of how to download specific files across many depositions. If downloading different file types 
 
-```bash
+(Another option is the [zenodo_get](https://github.com/dvolgyes/zenodo_get) python package, which allows for
+downloading all data in a record, or fetching direct links to all files within a record, from the command line. Important note:
+for zenodo_get, the input must be one of the versioned DOIs for the record, not the record that resolves to the latest version.
+The latter is what is provided in Table S14.)
 
-# given a file with Zenodo record URLs (e.g. from Table S14), one per line,
-# get get the direct URLs fo all files in each record,
-# and concatenate them into one file at urls/all_urls.txt
-get_urls() {
+### Helper function for programmatic access
 
-  if [ -d urls ]; then
-    echo "Error: 'urls' folder already exists. Delete the folder to proceed."
-    return 1
-  fi
+We will use the following helper script, `get_urls.py` for getting links to all files in a set of Zenodo records,
+from the latest version of each record.
 
-  mkdir -p urls
-  while IFS= read -r line; do
-    record=$(basename "$line")
-    zenodo_get "$line" -w "urls/${record}.txt"
-  done < "$1"
-  cat urls/zenodo* > urls/all_urls.txt
+```python
+# Input: space-separated Zenodo record IDs, from STDIN or passed as an argument
+# Output: urls_record.txt with one line per record, corresponding to the URLs for the latest version
+#         urls_file.txt with one line per file, corresponding to the direct download URL, for all files in all the input records
+# Usage: $ python get_latest.py 15048277
 
-}
+import requests
+import sys
+
+def get_latest_zenodo_info(record_id):
+	"""
+	Fetches the latest DOI and HTML URL for a Zenodo record ID.
+
+	Args:
+		record_id (str): The Zenodo record ID.
+
+	Returns:
+		tuple: A tuple containing the latest DOI and HTML URL, or (None, None) on error.
+	"""
+	api_url = f"https://zenodo.org/api/records/{record_id}"
+
+	try:
+		response = requests.get(api_url)
+		response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+		data = response.json()
+
+		# Get the API URL of the latest version (which should be the same record)
+		latest_html_url = data["links"]["self"]  # directly get the current record
+
+		# Extract the DOI
+		latest_doi = data["doi"]
+
+		return latest_doi, latest_html_url
+
+	except requests.exceptions.RequestException as e:
+		return None, None
+	except (KeyError, ValueError) as e:
+		return None, None
+
+def get_file_urls(record_id):
+	"""
+	Fetches file URLs for a given Zenodo record ID.
+
+	Args:
+		record_id (str): The Zenodo record ID.
+
+	Returns:
+		list: A list of file URLs, or an empty list on error.
+	"""
+	try:
+		api_url = f"https://zenodo.org/api/records/{record_id}"
+		response = requests.get(api_url)
+		response.raise_for_status()
+		data = response.json()
+		file_urls = []
+		for file_data in data['files']:
+			fname = file_data['key']
+			link = f"https://zenodo.org/record/{record_id}/files/{fname}"
+			file_urls.append(link)
+		return file_urls
+
+	except requests.exceptions.RequestException as e:
+		return []
+	except (KeyError, ValueError) as e:
+		return []
+
+record_urls = []
+file_urls_all = []
+errors = []
+
+# Determine source of record IDs (stdin or command line arguments)
+record_ids = []
+if not sys.stdin.isatty():
+	record_ids = sys.stdin.read().strip().split()
+else:
+	record_ids = sys.argv[1:]
+
+for record_id in record_ids:
+	if not record_id:
+		continue
+
+  print(record_id)
+	latest_doi, latest_html_url = get_latest_zenodo_info(record_id)
+	if latest_doi and latest_html_url:
+		record_urls.append(latest_html_url)
+
+		latest_record_id = latest_html_url.split("/")[-1]  # Extract record ID from URL
+		file_urls = get_file_urls(latest_record_id)
+		file_urls_all.extend(file_urls)
+	else:
+		errors.append(f"Error processing record ID {record_id}")
+
+if errors:
+	for error in errors:
+		print(error)
+else:
+	with open("urls_record.txt", "w") as record_file:
+		for url in record_urls:
+			record_file.write(url + "\n")
+
+	with open("urls_file.txt", "w") as file_file:
+		for url in file_urls_all:
+			file_file.write(url + "\n")
+
+	print("Record URLs written to urls_record.txt")
+	print("File URLs written to urls_file.txt")
+
 
 ```
 
@@ -82,7 +167,7 @@ get_urls() {
 
 ```bash
 # list the data types on Zenodo from Table S14
-$ cut -f 1 table_s14.tsv | sort | uniq
+cut -f 1 table_s14.tsv | sort | uniq
 # ArchR projects
 # Bigwigs
 # BPCells objects
@@ -95,33 +180,30 @@ $ cut -f 1 table_s14.tsv | sort | uniq
 # Per-cluster TF-MoDISco motifs (h5)
 # Seurat objects
 
-# get the records containing ChromBPNet models
-grep models table_s14.tsv | cut -f 5 > records.txt
-
-# get URLs for all files at these records
-get_urls records.txt
+# get the URLs for the files from records containing ChromBPNet models
+grep models table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+# Record URLs written to urls_record.txt
+# File URLs written to urls_file.txt
 
 # get the URLs for all Brain cell types
-grep Brain urls/all_urls.txt >> urls/brain_urls.txt
+grep Brain urls_file.txt > urls_brain.txt
 
 # download the Brain models
-wget -i urls/brain_urls.txt
+wget -i urls_brain.txt
 for i in *.gz; do tar -xvf $i; done
 ```
 
 #### Example: get the Seurat object for brain tissue
 
 ```bash
-# get the records containing Seurat objects
-grep Seurat table_s14.tsv | cut -f 5 > records.txt
-
-# get the URLs for all files at these records
-get_urls records.txt
+grep Seurat table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+# Record URLs written to urls_record.txt
+# File URLs written to urls_file.txt
 
 # get the URL for the Brain object
-grep Brain urls/all_urls.txt >> urls/brain_urls.txt
+grep Brain urls_file.txt > urls_brain.txt
 
-# download the Brain object
+# download the Brain models
 wget -i urls/brain_urls.txt
 ```
 
@@ -129,38 +211,34 @@ wget -i urls/brain_urls.txt
 
 ```bash
 # get the records containing Fragments + Count Matrices
-grep Fragments table_s14.tsv | cut -f 5 > records.txt
-
-# get URLs for all files at these records
-get_urls records.txt
+grep Fragments table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+# Record URLs written to urls_record.txt
+# File URLs written to urls_file.txt
 
 # get the URLs for all fragments and fragment index files
-grep fragments urls/all_urls.txt >> urls/fragment_urls.txt
+grep fragments urls_file.txt > urls_fragment.txt
 
 # download the fragments files & indices
-wget -i urls/fragment_urls.txt
+wget -i urls_fragment.txt
 ```
 
 #### Example: get bigwigs for all immune cell types
 
 ```bash
 # get the records containing Bigwigs
-grep Bigwigs table_s14.tsv | cut -f 5 > records.txt
-
-# get URLs for all files at these records
-get_urls records.txt
+grep Bigwig table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 
 # preview the columns in Table S2
-$ head -n2 table_s2.tsv
+head -n2 table_s2.tsv
 # Cluster	organ	organ_code	cluster_id	compartment	L1_annot	L2_annot	L3_annot	dend_order	ncell	median_numi	median_ngene	median_nfrags	median_tss	median_frip	note	organ_color	compartment_color	Cluster_ChromBPNet
 # LI_13	Liver	LI	13	epi	LI_13_cholangiocyte	Liver cholangiocyte	cholangiocyte	1	1004	1986	1462.5	7509.5	11.826	0.516103027	PKHD1 ANXA4 cholangiocyte (secretes bile)	#3b46a3	#11A579	Liver_c13
 
 # get all cell types where compartment == "imm", extract the Cluster_ChromBPNet column value,
 # and get the URLs matching those IDs
-awk -F'\t' '$5 == "imm" { print $19 }' table_s2.tsv | grep -f - urls/all_urls.txt > urls/imm_urls.txt
+awk -F'\t' '$5 == "imm" { print $19 }' table_s2.tsv | grep -f - urls_file.txt > urls_imm.txt
 
 # download the bigwigs for immune cell types
-wget -i urls/imm_urls.txt
+wget -i urls_imm.txt
 ```
 
 
