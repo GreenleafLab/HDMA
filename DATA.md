@@ -40,8 +40,8 @@ Any records on Zenodo can be downloaded by navigating to the record URL provided
 
 For programmatic access, we provide the following helper script for getting links to the latest version of all files in a set of Zenodo records,
 from the latest version of each record. This is useful since many of our data types are split across several depositions,
-and one may want to download several files across several depositions. We also provide some examples
-of how to download specific files across many depositions. If downloading different file types 
+and one may want to download several files or types of files across several depositions. We also provide some examples
+of how to download specific files across many depositions.
 
 (Another option is the [zenodo_get](https://github.com/dvolgyes/zenodo_get) python package, which allows for
 downloading all data in a record, or fetching direct links to all files within a record, from the command line. Important note:
@@ -180,7 +180,8 @@ cut -f 1 table_s14.tsv | sort | uniq
 # Per-cluster TF-MoDISco motifs (h5)
 # Seurat objects
 
-# get the URLs for the files from records containing ChromBPNet models
+# record IDs are in column 4 of Table S14, so we pipe those
+# into our helper to get the URLs for the files from records containing ChromBPNet models
 grep models table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 # Record URLs written to urls_record.txt
 # File URLs written to urls_file.txt
@@ -218,7 +219,7 @@ grep Fragments table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 # get the URLs for all fragments and fragment index files
 grep fragments urls_file.txt > urls_fragment.txt
 
-# download the fragments files & indices
+# download the fragments files & index files
 wget -i urls_fragment.txt
 ```
 
@@ -423,7 +424,7 @@ One tar archive per cluster, using the `Cluster_ChromBPNet` cluster ID from Tabl
 Only models which passed QC and which were used for downstream analysis are provided, thus there 
 are models for 189 cell types.
 
-The bias model was trained on Heart_c0 fold_0, 
+The bias model was trained on Heart_c0 fold_0, and the bias model was used for training all ChromBPNet models.
 
 The tar archive for each cluster can be extracted with `tar -xvf` and contains 15 models as weights saved as H5 files
 named `<cluster>__<fold>__<model>.h5`:
