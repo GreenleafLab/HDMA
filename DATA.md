@@ -559,7 +559,7 @@ For every cluster, there are two files:
 
 For easy interactive visualization, all genomic tracks can be loaded on the WashU
 Genome Browser using this link:
-https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json.
+[https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json](https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json).
 
 For instructions on loading tracks, see below:
 
