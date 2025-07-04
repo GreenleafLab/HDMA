@@ -16,9 +16,11 @@ This repository accompanies the preprint [**_Dissecting regulatory syntax in hum
 - [Codebase](https://greenleaflab.github.io/HDMA/#codebase)
 - [Code to produce the figures](https://greenleaflab.github.io/HDMA/#code-to-produce-the-figures)
 - [Data availability](https://greenleaflab.github.io/HDMA/#data-availability)
-- [Vignettes](https://greenleaflab.github.io/HDMA/#vignettes)
+- [Installation and system requirements](https://greenleaflab.github.io/HDMA/#installation-and-system-requirements)
+- [Demo](https://greenleaflab.github.io/HDMA/#demo)
+  - [Inputs and outputs](https://greenleaflab.github.io/HDMA/#inputs-and-outputs)
+  - [Vignettes](https://greenleaflab.github.io/HDMA/#vignettes)
 - [Citation](https://greenleaflab.github.io/HDMA/#citation)
-
 
 
 ## Codebase
@@ -129,7 +131,9 @@ a particular analysis is typically specified in the associated Slurm submission 
 A full list of package versions in each environment is located at `code/envs`.
 
 
-### Demo, inputs and outputs
+## Demo
+
+### Inputs and outputs
 
 Our repository is designed to enable reproducibility for the results by providing
 exact code and software/package versions, although it is not a fully executable workflow.
