@@ -61,6 +61,8 @@ However, it is not a fully executable workflow.
     * `04` to `05` --> causal variant analysis with gchromvar
     * `06` --> variant scoring using ChromBPNet models
     * `07a` to `07c` --> plot variant scoring results
+    
+Our pipeline for processing SHARE-seq data is available at https://github.com/GreenleafLab/shareseq-pipeline (v1.0.0).
 
 
 ## Code to produce the figures
@@ -101,7 +103,76 @@ Genome Browser here at this link:
 [https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json](https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json). We demonstrate how to load tracks [here](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser).
 
 
-## Vignettes
+
+## Installation and system requirements
+
+### Installation
+
+This repository can be cloned locally (expected time: several minutes due to
+large HTMLs included in the repository).
+Scripts are meant to be run on a Linux OS inside a Slurm-enabled HPC system.
+We performed our analysis on CentOS 7.9.2009.
+To run the code, one would need to set up the appropriate R and python environments,
+for example using `renv` and `conda`, respectively.
+
+### R
+
+Analysis conducted in R was performed using R 4.1.2, and the package version for each analysis
+is listed in the "Session info" section at the end of each rendered HTML
+(e.g. [here](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/01-motif_compendium.html#7_Session_info))
+
+### Python
+
+Analysis conducted in python depended on key packages and their own dependencies.
+Package environments were managed using `conda`, and the `conda` environment used for
+a particular analysis is typically specified in the associated Slurm submission script.
+A full list of package versions in each environment is located at `code/envs`.
+
+
+### Demo, inputs and outputs
+
+Our repository is designed to enable reproducibility for the results by providing
+exact code and software/package versions, although it is not a fully executable workflow.
+
+Below, we describe the major inputs and outputs for each section of the code. To demo
+the code on a small dataset, we link here to inputs and outputs from the Adrenal organ (total ~3k cells).
+Note that some analyses are, by definition, integrative, and won't be possible to execute
+with only one organ. All files are hosted on Zenodo (https://zenodo.org/communities/hdma/records?q=&l=list&p=1&s=10).
+When outputs are not specified, the major outputs are typically plots and data visualizations,
+wich can be viewed above in the section "Code to produce the figures". Code is intended to
+be run on a Slurm-enabled high-performance compute machine allowing for parallel jobs.
+On a small dataset such as the Adrenal organ, expected execution time on an HPC is on the order
+of several days.
+
+- `code/01-preprocessing`:
+  - Inputs: [Gene expression counts and chromatin accessibility fragment files](https://zenodo.org/records/15009251)
+  - Outputs:
+    - [Seurat object](https://zenodo.org/records/15014813)
+    - [ArchR project](https://zenodo.org/records/15022504)
+    - [BPCells object](https://zenodo.org/records/15053816)
+- `code/02-global_analysis`:
+  - Inputs: [Seurat object](https://zenodo.org/records/15014813)
+- `code/03-chrombpnet`:
+  - Inputs: [ArchR project](https://zenodo.org/records/15022504)
+  - Outputs:
+    - Trained [ChromBPNet models](https://zenodo.org/records/15048278) in h5 format, five folds per cell type
+    - Basepair-resolution [contribution scores](https://zenodo.org/records/15048832) in h5 format, one per cell type
+    - [Bigwig tracks](https://zenodo.org/records/15066651) viewable in a genome browser
+    - De novo [motifs](https://zenodo.org/records/15265410) in h5 format, one per cell type
+- `code/04-enhancers`:
+  - Inputs: 
+    - [Chromatin accessibility fragment files](https://zenodo.org/records/15009251)
+    - [ArchR project](https://zenodo.org/records/15022504)
+  - Outputs:
+    - [ABC loops](https://doi.org/10.5281/zenodo.15200417) in TSV format, one per cell type
+- `code/06-variants`:
+  - Inputs:
+    - [ArchR project](https://zenodo.org/records/15022504)
+    - [ChromBPNet model](https://zenodo.org/records/15048278)
+    - [Motif instances](https://zenodo.org/records/15200418)
+
+
+### Vignettes
 
 We provide a few notebooks with examples of how to interact with HDMA data,
 analysis outputs, and trained models:
@@ -109,6 +180,8 @@ analysis outputs, and trained models:
 - How to download specific files or data for specific cell types from across the Zenodo records: [`DATA.md`](https://github.com/GreenleafLab/HDMA/blob/main/DATA.md#downloading-data-from-zenodo) ([html](https://greenleaflab.github.io/HDMA/DATA.html))
 - Plotting genomic tracks using BPCells: [`code/05-misc/02-bp_cells_plotting_examples.Rmd`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/02-bp_cells_plotting_examples.Rmd) ([html](https://greenleaflab.github.io/HDMA/code/05-misc/02-bp_cells_plotting_examples.html))
 - Use cases for ChromBPNet models and outputs, including visualizing predicted accessibility and contribution scores at a region of interest, loading models, making new predictions, and predicting variant effect: [`code/05-misc/04-ChromBPNet_use_cases.ipynb`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/04-ChromBPNet_use_cases.ipynb) ([html](https://greenleaflab.github.io/HDMA/code/05-misc/04-ChromBPNet_use_cases.html))
+
+
 
 
 ## Citation
