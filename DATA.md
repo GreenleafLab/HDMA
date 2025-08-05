@@ -468,22 +468,17 @@ the tracks appear as regular bigwigs. See the dynseq paper ([Nair et al, _Nature
 
 ## Motif lexicon and motifs per cell type
 
-To generate the motif lexicon (also referred to as motif compendium in the code base), motifs were first discovered in each of the 189 cell types (using TF-MoDISco), resulting in 6,362 motifs.
-These motifs were then aggregated together and subjected to QC, in order to derive the motif lexicon of 508 motifs.
+### Motifs per cell type
 
-Table S6 contains a summary table of the motif lexicon, one row per motif, along with its granular and broad annotations.
+We also provide the 6,362 motifs learned with TF-MoDISco in each cell type, in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.16747618.svg)](https://doi.org/10.5281/zenodo.16747618):
 
-We provide the following resources for the motif lexicon in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418):
-
-- h5 file in the TF-MoDISco format containing motif CWMs as matrices (`motif_compendium.modisco_object.h5`)
-- PPMs in MEME format: `motif_compendium.PPM.memedb.txt`
-- PPMs of trimmed motifs in MEME format: `motif_compendium.trimmed.PPM.memedb.txt`
-- PNG images of forward and reverse-complemented CWM logos: `denovo_motifs_508_cwm_images.gz`
-
-We also provide the 6,362 motifs learned with TF-MoDISco in each cell type, in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15265410.svg)](https://doi.org/10.5281/zenodo.15265410):
-
-- one h5 file produced by TF-MoDISco per cell type, named `<cluster>__counts_modisco_output.h5` using the `Cluster_ChromBPNet` cluster ID from Table S2 containing the motifs CWMs as matrices
+- tar archive `all_modisco_outputs.tar.gz` containing:
+  - one h5 file produced by TF-MoDISco per cell type, named `<cluster>__counts_modisco_output.h5` using the `Cluster_ChromBPNet` cluster ID from Table S2 containing the motifs CWMs as matrices
+  - the [TF-MoDISco report](https://github.com/jmschrei/tfmodisco-lite?tab=readme-ov-file#generating-reports), `<cluster>__counts_modisco_report` using the `Cluster_ChromBPNet` cluster ID from Table S2, a directory containing:
+    - `trimmed_logos`: CWM logos (forward and reverse) for all TF-MoDISco motifs discovered in that model, as PNGs
+    - `motifs.html`: HTML file corresponding to the TF-MoDISco report, which depends on the logos in the directory, and can be viewed in a browser. Each row corresponds to one _de novo_ CWM, and indicates the number of seqlets associated with that CWM, the forward and reverse logos, and the best matches to an external motif database.
 - one TSV file, `merged_modisco_patterns_map.tsv`, with a header and 6,362 rows: for every motif learned in every cell type, which maps it to the aggregated compendium motifs. The column `merged_pattern` matches the column of the same name in Table S6.
+
 
 Following the [documentation from tf-modiscolite](https://github.com/jmschrei/tfmodisco-lite?tab=readme-ov-file#running-tfmodisco-lite), the h5 files have this format:
 
@@ -544,15 +539,79 @@ modisco_obj['neg_patterns']
 # <HDF5 group "/neg_patterns" (3 members)>
 ```
 
+The `merged_modisco_patterns_map.tsv` can be used to match per-cell type motifs to their motif cluster in the lexicon:
+
+```bash
+head merged_modisco_patterns_map.tsv
+merged_pattern	component_celltype	pattern_class	pattern	n_seqlets	component_pattern
+neg.Average_12__merged_pattern_0	Spleen_c5	neg_patterns	pattern_0	88	Spleen_c5__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Spleen_c0	neg_patterns	pattern_0	461	Spleen_c0__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Skin_c5	neg_patterns	pattern_0	302	Skin_c5__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Heart_c13	neg_patterns	pattern_0	128	Heart_c13__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Skin_c7	neg_patterns	pattern_0	708	Skin_c7__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Heart_c5	neg_patterns	pattern_0	47	Heart_c5__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Heart_c4	neg_patterns	pattern_0	41	Heart_c4__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Skin_c9	neg_patterns	pattern_0	335	Skin_c9__neg_patterns.pattern_0
+neg.Average_12__merged_pattern_0	Heart_c2	neg_patterns	pattern_0	93	Heart_c2__neg_patterns.pattern_0
+```
+
+### Motif lexicon
+
+To generate the motif lexicon (also referred to as motif compendium in the code base), the 6,362 motifs discovered in each of the 189 cell types (using TF-MoDISco) were aggregated together and subjected to QC. This resulted in a total of 508 motifs.
+
+Table S6 contains a summary table of the motif lexicon, one row per motif, along with its granular and broad annotations.
+
+We provide the following resources for the motif lexicon in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418):
+
+- h5 file in the TF-MoDISco format containing motif CWMs as matrices (`motif_compendium.modisco_object.h5`)
+- PPMs in MEME format: `motif_compendium.PPM.memedb.txt`
+- PPMs of trimmed motifs in MEME format: `motif_compendium.trimmed.PPM.memedb.txt`
+- PNG images of forward and reverse-complemented CWM logos: `denovo_motifs_508_cwm_images.gz`
+
+To match the motifs in the lexicon h5 object to their names, use column R, "merged_pattern", in Table S6, which corresponds to the keys in the object.
+
+
 
 ## Motif instances
 
 The genomic tracks of annotated predictive motif instances in peaks are provided for each cluster as a zipped file `motif_instances.gz` in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418)
   
-For every cluster, there are two files:
+For every cluster, there are two files.
 
-- `<cluster>__instances.annotated.tsv.gz`
-- `<cluster>__instances.bed.gz>`
+A BED file: `<cluster>__instances.bed.gz>`, with the columns `chr`, `start`, `end`, `motif_name`, `hit_score`, `strand`, `pattern_class`:
+
+```bash
+$ zcat Adrenal_c0__instances.bed.gz | head
+chr1	10175	10180	456|ZEB/SNAI	888.5867	-	neg_patterns
+chr1	10566	10575	436|SP/KLF	931.89967	+	pos_patterns
+chr1	181096	181105	436|SP/KLF	933.10714	+	pos_patterns
+chr1	181151	181161	400|NRF1	966.9898999999999	-	pos_patterns
+chr1	181180	181190	400|NRF1	962.5238	-	pos_patterns
+chr1	181209	181219	400|NRF1	951.84535	-	pos_patterns
+chr1	181238	181248	400|NRF1	949.1391	-	pos_patterns
+chr1	181267	181277	400|NRF1	944.7280999999999	-	pos_patterns
+chr1	181296	181306	400|NRF1	934.34006	-	pos_patterns
+chr1	181325	181335	400|NRF1	930.62365	-	pos_patterns
+```
+
+
+A TSV file: `<cluster>__instances.annotated.tsv.gz`, with a more extended set of information (including hit scores and genomic annotaitons) per motif instance:
+
+```bash
+$ zcat Adrenal_c0__instances.annotated.tsv.gz | head
+seqnames	start	end	width	strand	start_untrimmed	end_untrimmed	motif_name	source	hit_coefficient	hit_correlation	hit_importance	peak_name	peak_id	motif_name_unlabeled	pattern_class	distToGeneStart	nearestGene	peakType	distToTSS	nearestTSS	GC	N	distToPeakSummit
+chr1	10175	10180	5	-	10158	10188	456|ZEB/SNAI	2	1.1400998	0.8885867	0.009292185	NA	0	neg_patterns.neg.Average_12__merged_pattern_0	neg_patterns	1690	DDX11L1	Promoter	1690	ENST00000456328.2	0.4	0	71
+chr1	10566	10575	9	+	10560	10590	436|SP/KLF	2	9.525877	0.93189967	0.02702999	NA	0	pos_patterns.pos.Average_212__merged_pattern_0	pos_patterns	1297	DDX11L1	Promoter	1297	ENST00000456328.2	0.8889	0	464
+chr1	181096	181105	9	+	181090	181120	436|SP/KLF	1	1.8184662	0.93310714	0.0265913	NA	1	pos_patterns.pos.Average_212__merged_pattern_0	pos_patterns	1594	DDX11L17	Promoter	1594	ENST00000624431.2	0.8889	0	393
+chr1	181151	181161	10	-	181138	181168	400|NRF1	2	8.63048	0.9669899	0.05363989	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1539	DDX11L17	Promoter	1539	ENST00000624431.2	0.9	0	338
+chr1	181180	181190	10	-	181167	181197	400|NRF1	2	4.2169023	0.9625238	0.038315773	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1510	DDX11L17	Promoter	1510	ENST00000624431.2	0.9	0	309
+chr1	181209	181219	10	-	181196	181226	400|NRF1	2	2.505722	0.95184535	0.03131914	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1481	DDX11L17	Promoter	1481	ENST00000624431.2	0.9	0	280
+chr1	181238	181248	10	-	181225	181255	400|NRF1	2	2.895874	0.9491391	0.036172867	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1452	DDX11L17	Promoter	1452	ENST00000624431.2	0.9	0	251
+chr1	181267	181277	10	-	181254	181284	400|NRF1	2	1.5476482	0.9447281	0.026664732	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1423	DDX11L17	Promoter	1423	ENST00000624431.2	0.9	0	222
+chr1	181296	181306	10	-	181283	181313	400|NRF1	2	1.0276077	0.93434006	0.023554802	NA	1	pos_patterns.pos.Average_159__merged_pattern_0	pos_patterns	1394	DDX11L17	Promoter	1394	ENST00000624431.2	0.9	0	193
+```
+
+
 
 
 ## Genomic tracks on the WashU Genome Browser
