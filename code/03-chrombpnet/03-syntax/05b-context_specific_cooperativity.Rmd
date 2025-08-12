@@ -292,21 +292,11 @@ plot_motif_across_celltypes(motif = "339|IKZF1_RUNX",
 ```
 
 
-# Validation in other datasets
-
-
-Datasets to consider for validation:
-
-- https://cells.ucsc.edu/?ds=fetal-liver+liver&gene=FOXA3
-- https://cells.ucsc.edu/?ds=fetal-thymus+all&gene=RUNX3
-
-
 
 # Session info
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

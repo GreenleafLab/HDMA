@@ -1290,7 +1290,6 @@ plot_motif_summary(unresolved %>% mutate(annotation_broad = motif_name),
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

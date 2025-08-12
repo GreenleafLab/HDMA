@@ -562,7 +562,6 @@ trackplot_combine2(c(list(scale_plot), list(track_cov), track_preds_broad, list(
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

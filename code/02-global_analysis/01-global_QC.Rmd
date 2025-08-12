@@ -1018,7 +1018,6 @@ plot_grid(p1, p3, ncol = 1, rel_heights = c(0.44, 0.55), align = "v", axis = "rl
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

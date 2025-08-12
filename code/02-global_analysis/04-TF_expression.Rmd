@@ -299,7 +299,6 @@ write_tsv(hocomoco_unique, file = glue("{out}/hocomoco_unique.tsv"))
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

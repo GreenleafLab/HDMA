@@ -1918,7 +1918,6 @@ final_plot
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

@@ -399,7 +399,6 @@ plot_grid(p1, p2, p3, nrow = 1)
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```

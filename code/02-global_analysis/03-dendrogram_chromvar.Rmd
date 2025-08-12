@@ -624,7 +624,6 @@ draw(ht4)
 
 ```{r sinfo, cache = FALSE}
 
-.libPaths()
 sessionInfo()
 
 ```
