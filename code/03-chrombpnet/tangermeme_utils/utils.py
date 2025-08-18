@@ -14,6 +14,7 @@ SHIFT_REL_INPUT = np.int64((2114 - 1000) / 2)
 
 
 
+
 def plot_motif(mat, type="CWM", title=None, ax=None, plot_IC=False, figsize=(6, 2), spines_visible = False):
 	"""
 	Plot a motif logo.
