@@ -63,18 +63,8 @@ def reshape_folds(y):
 				profiles: A list of the profile elements from the input data.
 				counts: A list of the counts elements from the input data.
 	"""
-	profiles = []
-	counts = []
-	
-	for item in y:
-		if len(item) == 2:  # Ensure each sublist has two elements
-			profiles.append(item[0])  # Assuming profile is the first element
-			counts.append(item[1])  # Assuming counts is the second element
-		else:
-			print("Warning: Sublist has an unexpected number of elements.")
 
-	# stack the profiles and counts into a new dimension
-	profiles = torch.stack(profiles, dim=0)
-	counts = torch.stack(counts, dim=0)
+	profiles = torch.stack([item[0] for item in y], dim=0)
+	counts = torch.stack([item[1] for item in y], dim=0)
 	
 	return profiles, counts

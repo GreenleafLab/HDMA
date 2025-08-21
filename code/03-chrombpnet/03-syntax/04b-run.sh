@@ -1,15 +1,14 @@
 #!/usr/bin/bash
 
+source ../config.sh
+
 JOBSCRIPT=04b-jobscript.sh
-MOTIF_FILE=04b-composites_to_test.tsv
+CLUSTER_FILE=$chrombpnet_models_keep2
 
-# count motifs
-NUM_JOBS=$(wc -l < "${MOTIF_FILE}")
+# count clusters
+NUM_JOBS=$(wc -l < "${CLUSTER_FILE}")
 
-# account for header
-NUM_JOBS=$((NUM_JOBS - 1))
+echo "Number of clusters to test: ${NUM_JOBS}"
 
-echo "Number of motifs to test: ${NUM_JOBS}"
-
-# sbatch --array=1-${NUM_JOBS}%40 ${JOBSCRIPT}
-sbatch --array=1-1 ${JOBSCRIPT}
+sbatch --array=1-${NUM_JOBS}%50 ${JOBSCRIPT}
+# sbatch --array=163-163 ${JOBSCRIPT}
