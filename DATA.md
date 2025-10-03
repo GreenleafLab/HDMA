@@ -560,6 +560,7 @@ neg.Average_12__merged_pattern_0	Heart_c2	neg_patterns	pattern_0	93	Heart_c2__ne
 To generate the motif lexicon (also referred to as motif compendium in the code base), the 6,362 motifs discovered in each of the 189 cell types (using TF-MoDISco) were aggregated together and subjected to QC. This resulted in a total of 508 motifs.
 
 Table S6 contains a summary table of the motif lexicon, one row per motif, along with its granular and broad annotations.
+The motifs can be explored interactively along with summary stats across tisuses and best matches to know motifs here: [https://greenleaflab.github.io/HDMA/MOTIFS.html](https://greenleaflab.github.io/HDMA/MOTIFS.html)
 
 We provide the following resources for the motif lexicon in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418):
 

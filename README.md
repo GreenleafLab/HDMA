@@ -104,7 +104,7 @@ All genomic tracks are also hosted online for interactive visualization with the
 Genome Browser here at this link:
 [https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json](https://epigenomegateway.wustl.edu/browser2022/?genome=hg38&hub=https://human-dev-multiome-atlas.s3.amazonaws.com/tracks/HDMA_trackhub.json). We demonstrate how to load tracks [here](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser).
 
-
+_De novo_ motifs in the compendium can be explored interactively here: [https://greenleaflab.github.io/HDMA/MOTIFS.html](https://greenleaflab.github.io/HDMA/MOTIFS.html)
 
 ## Installation and system requirements
 
