@@ -35,6 +35,7 @@ code/logs
 
 # outs
 output
+motifs
 
 # ipynb
 .ipynb_checkpoints
