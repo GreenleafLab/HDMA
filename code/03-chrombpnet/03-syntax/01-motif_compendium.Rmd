@@ -20,10 +20,11 @@ output:
 
 # **MODIFY THIS CHUNK**
 library(here)
-kundaje_dir <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+kundaje_dir <- trimws(readr::read_lines(here("code/AK_PROJ_DIR.txt")))
 doc_id      <- "01"
 out         <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
 figout      <- here("figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
+chrombpnet_dir <- here("output/03-chrombpnet")
 
 ```
 
@@ -84,6 +85,7 @@ library(ggrepel)
 library(cowplot)
 library(plotly)
 library(ggseqlogo)
+library(BPCells)
 
 script_path <- here("code/utils/")
 source(file.path(script_path, "plotting_config.R"))
@@ -97,6 +99,8 @@ ggplot2::theme_set(theme_BOR())
 
 
 # Load & wrangle data
+
+## Load cluster, motif, and hits data
 
 Cluster metadata:
 
@@ -131,7 +135,7 @@ Load number of peaks:
 ```{r load_npeaks}
 
 npeaks <- read_table(here("output/03-chrombpnet/01-models/qc/npeaks.tsv"),
-                   col_names = c("n_peaks", "peak_file")) %>% 
+                     col_names = c("n_peaks", "peak_file")) %>% 
   filter(peak_file != "total")
 
 nrow(npeaks) == 203
@@ -168,7 +172,7 @@ Load annotated patterns:
 ```{r load_motifs_compiled}
 
 # manually annotated motif patterns
-motifs_compiled_all <- read_tsv("../02-compendium/04d-ChromBPNet_de_novo_motifs.tsv") %>% 
+motifs_compiled_all <- read_tsv(here("code/03-chrombpnet/02-compendium/04d-ChromBPNet_de_novo_motifs.tsv")) %>% 
   mutate(motif_name = paste0(idx_uniq, "|", annotation)) %>% 
   dplyr::relocate(motif_name, .after = pattern) %>%
   dplyr::relocate(idx_uniq, .after = idx) %>% 
@@ -292,7 +296,7 @@ dim(hits_top_organ)
 motifs_compiled_unique <- hits_all_totals %>% 
   left_join(motifs_compiled_unique, by = "motif_name") %>% 
   left_join(hits_top_organ, by = "motif_name") %>% 
-  mutate(motif_name_safe = gsub("\\/|\\||\\#", ".", motif_name)) %>% 
+  mutate(motif_name_safe = gsub("\\/|\\|", ".", motif_name)) %>% 
   mutate(modisco_cwm_fwd = here(glue("output/03-chrombpnet/02-compendium/modisco_compiled/trimmed_logos/{pattern_class}.{pattern}.cwm.fwd.png")),
          modisco_cwm_rev = here(glue("output/03-chrombpnet/02-compendium/modisco_compiled/trimmed_logos/{pattern_class}.{pattern}.cwm.rev.png")))
 
@@ -406,6 +410,41 @@ hit_summit_dist <- left_join(hit_summit_dist, motifs_compiled_unique, by = "moti
 ```
 
 
+We also count the number of unique peaks in each cluster that contain at least one motif instance,
+separately for positive and negative patterns:
+
+```{bash, eval = FALSE}
+
+cd ../../../output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks
+for class in ( pos_patterns neg_patterns ); do
+for i in *; do
+n_peaks=`zcat ${i}/counts_v0.23_a0.8_all/hits_unique.reconciled.annotated.tsv.gz | grep ${class} | cut -f 14 | sort | uniq | wc -l`
+echo -e "${i}\t${n_peaks}" >> .unique_peaks_cluster.${class}.txt
+done
+done
+
+```
+
+
+Load the counts:
+
+```{r n_peaks}
+
+peaks_w_pos_hits <- read_tsv(here("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/.unique_peaks_cluster.pos_patterns.txt"),
+                             col_names = c("Cluster", "N_peaks_w_hits")) %>% 
+  mutate(pattern_class = "pos_patterns")
+
+peaks_w_neg_hits <- read_tsv(here("output/03-chrombpnet/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/.unique_peaks_cluster.neg_patterns.txt"),
+                             col_names = c("Cluster", "N_peaks_w_hits")) %>% 
+  mutate(pattern_class = "neg_patterns")
+
+peaks_w_hits <- bind_rows(peaks_w_pos_hits,
+                          peaks_w_neg_hits) %>%
+  left_join(cluster_meta %>% dplyr::select(organ, Cluster = Cluster_ChromBPNet, n_peaks), by = "Cluster") %>% 
+  mutate(Prop_peaks_w_hits = N_peaks_w_hits / n_peaks)
+
+```
+
 
 Load HOCOMOCO:
 
@@ -459,7 +498,8 @@ save(chrombpnet_models_keep, cluster_meta, motifs_compiled_unique, motifs_compil
 
 ```
 
-To reload:
+
+To reload for later analysis:
 
 ```{r, eval = FALSE}
 
@@ -470,7 +510,7 @@ hits_all <- bind_rows(hits)
 ```
 
 
-## Rename trimmed CWM logos:
+## Rename trimmed CWM logos
 
 ```{r, eval = FALSE}
 
@@ -500,8 +540,8 @@ for (i in 1:nrow(motifs_compiled_unique)) {
 motifs_compiled_unique %>% 
   mutate(
     class = case_when(
-      pattern_class == "pos_patterns" ~ "Activating",
-      TRUE ~ "Reducing"
+      pattern_class == "pos_patterns" ~ "positive",
+      TRUE ~ "negative"
     ),
     cwm_logo_fwd = paste0(motif_name_safe, "__cwm.fwd.png"),
     cwm_logo_rev = paste0(motif_name_safe, "__cwm.rev.png"),
@@ -705,7 +745,6 @@ hits_all %>%
 
 ## Total hits
 
-
 By class (positive/negative patterns):
 
 ```{r total_n_hits_by_class, fig.width = 18, fig.height = 6}
@@ -735,7 +774,29 @@ hits_all %>%
 
 Let's plot total hits and mean hits per peak, grouped by organ:
 
+
 ```{r nhits_per_cluster_aggregated_plot, fig.width = 10, fig.height = 6}
+
+peaks_w_hits %>% 
+  group_by(pattern_class, organ) %>% 
+  summarize(median = median(Prop_peaks_w_hits)) %>% 
+  spread(pattern_class, median)
+
+p0 <- peaks_w_hits %>% 
+  mutate(pattern_class = factor(pattern_class, levels = c("pos_patterns", "neg_patterns"))) %>% 
+  ggplot(aes(x = organ, y = Prop_peaks_w_hits)) +
+  geom_jitter(stat = "identity", aes(fill = organ), shape = 21, color = "white", size = 2, alpha = 0.6, width = 0.25) +
+  scale_fill_manual(values = cmap_organ) +
+  rotate_x() +
+  facet_wrap(~ pattern_class, ncol = 1) +
+  ylab("Proportion") +
+  theme(
+    strip.background = element_blank(),
+    panel.grid.major.y = element_line(color = "gray90"),
+    panel.grid.minor.y = element_line(color = "gray90")) +
+  scale_y_continuous(labels = scales::comma) +
+  ggtitle("Peaks with hits") +
+  no_legend()
 
 p1 <- hits_all %>% 
   group_by(Cluster, pattern_class) %>%
@@ -745,7 +806,7 @@ p1 <- hits_all %>%
   mutate(Cluster = factor(Cluster, levels = unique(.$Cluster)),
          pattern_class = factor(pattern_class, levels = c("pos_patterns", "neg_patterns"))) %>% 
   ggplot(aes(x = organ, y = total_hits)) +
-  geom_jitter(stat = "identity", aes(fill = organ), shape = 21, color = "white", size = 3, alpha = 0.6, width = 0.25) +
+  geom_jitter(stat = "identity", aes(fill = organ), shape = 21, color = "white", size = 2, alpha = 0.6, width = 0.25) +
   scale_fill_manual(values = cmap_organ) +
   rotate_x() +
   facet_wrap(~ pattern_class, ncol = 1) +
@@ -755,7 +816,7 @@ p1 <- hits_all %>%
     panel.grid.major.y = element_line(color = "gray90"),
     panel.grid.minor.y = element_line(color = "gray90")) +
   scale_y_continuous(labels = scales::comma) +
-  ggtitle("Total hits (+ patterns)") +
+  ggtitle("Total hits") +
   no_legend()
 
 p2 <- hits_per_peak %>% 
@@ -766,20 +827,20 @@ p2 <- hits_per_peak %>%
   mutate(pattern_class = factor(pattern_class, levels = c("median_pos_patterns", "median_neg_patterns"))) %>% 
   ggplot(aes(x = organ, y = median_n_hits)) +
   ggbeeswarm::geom_quasirandom(
-    aes(fill = organ), shape = 21, color = "white", size = 3, alpha = 0.6) + #, width = 0.25, height = 0) +
+    aes(fill = organ), shape = 21, color = "white", size = 2, alpha = 0.6) + #, width = 0.25, height = 0) +
   scale_fill_manual(values = cmap_organ) +
   facet_wrap(~ pattern_class, ncol = 1) +
   rotate_x() +
-  ylab("Median number of hits per peak (+ patterns)") +
+  ylab("Median number of hits per peak") +
   theme(
     strip.background = element_blank(),
     panel.grid.major.y = element_line(color = "gray90"),
     panel.grid.minor.y = element_line(color = "gray90")) +
   scale_y_continuous(breaks = seq(0, 10, 1), labels = seq(0, 10), limits = c(0, 9)) +
   no_legend() +
-  ggtitle("Median hits per peak (+ patterns)")
+  ggtitle("Median hits per peak")
 
-plot_grid(p1, p2, nrow = 1, align = "h", axis = "tb")
+plot_grid(p0, p1, p2, nrow = 1, align = "h", axis = "tb", rel_widths = c(1, 1.2, 1))
 
 ```
 
@@ -1281,6 +1342,441 @@ plot_motif_summary(unresolved %>% mutate(annotation_broad = motif_name),
                    plot_known_motifs = FALSE,
                    rel_widths = c(3.5, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
                    top_n = 30)
+
+```
+
+
+
+# Footprinting motif instances
+
+For a few motifs, let's compute the ATAC footprint, focusing on the the cluster with
+the most hits for each of the motifs of interest:
+
+```{r}
+
+# for each motif of interest, what is the cluster w/ the most hits?
+hits_all_anno %>%
+  group_by(annotation_broad) %>%
+  slice_max(order_by = n, n = 1) %>%
+  filter(annotation_broad %in%
+           c("CTCF", "GATA", "BZIP", "NFY", "NFYrep", "YY1/2", "YY1/2rep", "HIC", "ZEB/SNAI", "BCL11A/IRF/SPI", "BCL11Arep")) %>%
+  dplyr::select(pattern_class, motif_name, Cluster, n)
+
+```
+
+## Load BPCells object
+
+```{r load_bpcells}
+
+global_bp_obj <- readRDS(here("output/05-misc/01/global_bp_obj.rds"))
+
+head(global_bp_obj$cell_metadata)
+
+```
+
+
+## Helper function
+
+The motif footprint calculation counts insertions (i.e. fragment starts, ends)
+that fall within each position in the window. Then the fragment count at each position
+is normalized by (divided by) the mean count in the outer 10% of the window, taken as a measure of the local
+background accessibility.
+
+```{r fn_footprint}
+
+footprint_fn <- function(cluster,
+                         motif_broad,
+                         split_by_quantile = TRUE,
+                         sample_instances = TRUE,
+                         sample_n = 10000,
+                         flank = 250) {
+  
+  motif_safe <- gsub("\\/", ".", motif_broad)
+  q_string <- ifelse(split_by_quantile, "quantiles", "noquantiles")
+  s_string <- ifelse(sample_instances, glue("sample{sample_n}"), "nosample")
+  out_path <- glue("{out}/{cluster}__{motif_safe}.footprint.{q_string}.{s_string}.flank{flank}.Rds")
+  
+  if (file.exists(out_path)) {
+    
+    message("@ found previous output at ", basename(out_path))
+    fp_out <- readRDS(out_path)
+    return(fp_out)
+    
+  }
+  
+  message("@ loading hits for cluster ", cluster)
+  # load hits for the cluster of interest
+  motif_instances <- rtracklayer::import.bed(glue("{chrombpnet_dir}/02-compendium/hits_unified_motifs/reconciled_per_celltype_peaks/{cluster}/{finemo_param}/{cluster}__hits_unified.{finemo_param}.reconciled.bed.gz"),
+                                             extraCols = c("pattern_class" = "character"))
+  
+  # map in the broad annotation
+  motif_instances$annotation_broad <- plyr::mapvalues(motif_instances$name,
+                                                      from = motifs_compiled_unique$motif_name,
+                                                      to = motifs_compiled_unique$annotation_broad,
+                                                      warn_missing = FALSE)
+  
+  instances_motif <- motif_instances[motif_instances$annotation_broad == motif_broad]
+  
+  # subset the global object
+  sub_meta <- global_bp_obj$cell_metadata %>%
+    dplyr::filter(Cluster_chrombpnet == cluster)
+  
+  frags <- global_bp_obj$frags %>% select_cells(sub_meta$cb)
+  
+  # if there are different variants of the motif, subset to the most common one -
+  # motif instances may differ because they are identified with slightly different
+  # input motifs, and then reconciled afterwards to a unique compendium motif
+  message(glue("@ found {length(motif_instances)} motif instances"))
+  n_variants  <- instances_motif$name %>% unique %>% length
+  most_common <- instances_motif %>% width() %>% table() %>% which.max() %>% names()
+  instances_subset <- instances_motif[width(instances_motif) == most_common]
+  message(glue("@ motif instances remaining: N={length(instances_subset)}"))
+  
+  # split motifs by motif score quantile
+  if (split_by_quantile) {
+    
+    message("@ splitting hits by quantile")
+    quantiles <- quantile(instances_subset$score)
+    instances_subset$quantile <- cut(instances_subset$score, breaks = quantiles,
+                                     include.lowest = TRUE, labels = 1:4) %>% 
+      as.character()
+    
+    print(unique(instances_subset$quantile))
+    
+  } else { instances_subset$quantile <- 1 }
+  
+  n_quantiles <- length(unique(instances_subset$quantile))
+  
+  # sample motif instances
+  if (sample_instances) {
+    
+    instances_per_q_sampled <- map(1:n_quantiles, function(q) {
+      
+      instances_per_q <- instances_subset[instances_subset$quantile == q]
+      
+      if (length(instances_per_q) < sample_n) {
+        message(glue("@@ quantile {q}: <{sample_n} motif instances"))
+        return(instances_per_q)
+      }
+      else {
+        message(glue("@@ quantile {q}: sampling {sample_n} motif instances"))
+        instances_per_q %>% sample(sample_n)
+      }
+      
+    })
+    
+  } else {
+    
+    instances_per_q_sampled <- split(instances_subset, instances_subset$quantile)
+    
+  }
+  
+  print(length(instances_per_q_sampled))
+  
+  n_instances <- map_dbl(instances_per_q_sampled, length) %>% sum
+  
+  # compute footprints
+  message("@ computing footprints...")
+  footprints_data <- imap_dfr(instances_per_q_sampled, function(i, q) {
+    
+    if (split_by_quantile) message(glue("@@ quantile {q}"))
+    fp <- BPCells::plot_tf_footprint(
+      fragments = frags,
+      motif_positions = i,
+      cell_groups = sub_meta$Cluster_chrombpnet,
+      flank = flank,
+      smooth = 2,
+      return_data = TRUE
+    ) %>% 
+      mutate(quantile = q)
+    
+    return(fp)
+    
+  }
+  )
+  
+  fp_out <- list(
+    "cluster"     = cluster,
+    "motif"       = motif_broad,
+    "footprint"   = footprints_data,
+    "width"       = as.numeric(most_common),
+    "n_instances" = n_instances)
+  
+  message("@ saving results to ", basename(out_path))
+  
+  saveRDS(fp_out, file = out_path)
+  
+  return(fp_out)
+  
+  message("@ done.")
+  
+}
+
+plot_footprint_fn <- function(footprints_out, central_window = 500) {
+  
+  n_quantiles <- length(unique(footprints_out$footprint$quantile))
+  
+  message("@ plotting...")
+  footprints_out$footprint$quantile <- as.character(footprints_out$footprint$quantile)
+  
+  if (max(footprints_out$footprint$quantile) > 1) blues <- RColorBrewer::brewer.pal(8, "Blues") %>%
+    tail(4)
+  else blues <- "black"
+  
+  flank <- central_window / 2
+  
+  # plot footprints 
+  p1 <- footprints_out$footprint %>% 
+    filter(position > -flank & position < flank) %>% 
+    ggplot(aes(position, smoothed_enrichment, color = quantile)) +
+    # highlight the motif position within the window
+    annotate("rect",
+             xmin = - footprints_out$width / 2, xmax = footprints_out$width / 2,
+             ymin = -Inf, ymax = Inf,
+             fill = "yellow", alpha = 0.3) +
+    geom_line(alpha = 0.8) +
+    scale_color_manual(values = blues) +
+    labs(x = "Distance from motif center (bp)", y = "Enrichment") +
+    ggtitle(glue("{footprints_out$motif} \n(N={footprints_out$n_instances} instances, {footprints_out$cluster})")) +
+    square()
+  
+  if (n_quantiles == 1) p1 <- p1 + no_legend()
+  
+  p1
+  
+}
+
+```
+
+
+## CTCF
+
+We want to get footprints of a specific TF, so we filter to instances of e.g. CTCF here,
+which is a positive control that we know should footprint well in a high-quality
+ATACseq dataset.
+
+```{r ctcf_footprint, fig.width = 5, fig.height = 5}
+
+fp_ctcf_out <- footprint_fn(cluster = "Liver_c1",
+                            motif_broad = "CTCF",
+                            split_by_quantile = TRUE,
+                            sample_instances = FALSE)
+
+plot_footprint_fn(fp_ctcf_out)
+
+# no splitting
+fp_ctcf_out2 <- footprint_fn(cluster = "Liver_c1",
+                             motif_broad = "CTCF",
+                             split_by_quantile = FALSE,
+                             sample_instances = FALSE)
+
+plot_footprint_fn(fp_ctcf_out2)
+
+```
+
+
+
+
+
+## NFY
+
+```{r nfy_footprint, fig.width = 5, fig.height = 5}
+
+fp_nfy_out1 <- footprint_fn(cluster = "Brain_c9",
+                            motif_broad = "NFY",
+                            split_by_quantile = TRUE,
+                            sample_instances = FALSE)
+
+plot_footprint_fn(fp_nfy_out1)
+
+fp_nfy_out <- footprint_fn(
+  cluster = "Brain_c9",
+  motif_broad = "NFY",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE
+)
+
+plot_footprint_fn(fp_nfy_out)
+
+```
+
+
+
+## NFY repressive
+
+
+```{r nfyrep_footprint, fig.width = 5, fig.height = 5}
+
+fp_nfyrep_out <- footprint_fn(
+  cluster = "Heart_c4",
+  motif_broad = "NFYrep",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_nfyrep_out)
+
+fp_nfyrep_out2 <- footprint_fn(
+  cluster = "Heart_c4",
+  motif_broad = "NFYrep",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_nfyrep_out2)
+
+```
+
+## YY1/2
+
+```{r yy1_footprint, fig.width = 5, fig.height = 5}
+
+fp_yy1_out <- footprint_fn(
+  cluster = "Lung_c1",
+  motif_broad = "YY1/2",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_yy1_out)
+
+fp_yy1_out2 <- footprint_fn(
+  cluster = "Lung_c1",
+  motif_broad = "YY1/2",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_yy1_out2)
+
+```
+
+## YY1/2 repressive
+
+```{r yy1rep_footprint, fig.width = 5, fig.height = 5}
+
+fp_yy1rep_out <- footprint_fn(
+  cluster = "Liver_c1",
+  motif_broad = "YY1/2rep",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_yy1rep_out)
+plot_footprint_fn(fp_yy1rep_out)
+
+fp_yy1rep_out2 <- footprint_fn(
+  cluster = "Liver_c1",
+  motif_broad = "YY1/2rep",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_yy1rep_out2)
+
+```
+
+## ZEB/SNAI
+
+```{r zeb_footprint, fig.width = 5, fig.height = 5}
+
+fp_zeb_out <- footprint_fn(
+  cluster = "Skin_c1",
+  motif_broad = "ZEB/SNAI",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_zeb_out)
+
+# split quantiles
+fp_zeb_out2 <- footprint_fn(
+  cluster = "Skin_c1",
+  motif_broad = "ZEB/SNAI",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_zeb_out2)
+
+``` 
+
+## HIC
+
+```{r hic_footprint, fig.width = 5, fig.height = 5}
+
+fp_hic_out <- footprint_fn(
+  cluster = "Heart_c3",
+  motif_broad = "HIC",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE
+)
+
+plot_footprint_fn(fp_hic_out)
+
+fp_hic_out2 <- footprint_fn(
+  cluster = "Heart_c3",
+  motif_broad = "HIC",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_hic_out2)
+
+```
+
+## BCL11A
+
+```{r bcl11a_footprint, fig.width = 5, fig.height = 5}
+
+fp_bcl11_out <- footprint_fn(
+  cluster = "Liver_c7",
+  motif_broad = "BCL11A/IRF/SPI",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE)
+
+plot_footprint_fn(fp_bcl11_out)
+
+fp_bcl11_out2 <- footprint_fn(
+  cluster = "Liver_c7",
+  motif_broad = "BCL11A/IRF/SPI",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE,
+  flank = 500
+)
+
+plot_footprint_fn(fp_bcl11_out2)
+
+```
+
+## BCL11A repressive
+
+```{r bcl11arep_footprint, fig.width = 5, fig.height = 5}
+
+fp_bcl11rep_out <- footprint_fn(
+  cluster = "Skin_c2",
+  motif_broad = "BCL11Arep",
+  split_by_quantile = FALSE,
+  sample_instances = FALSE)
+
+plot_footprint_fn(fp_bcl11rep_out)
+
+fp_bcl11rep_out2 <- footprint_fn(
+  cluster = "Skin_c2",
+  motif_broad = "BCL11Arep",
+  split_by_quantile = TRUE,
+  sample_instances = FALSE)
+
+plot_footprint_fn(fp_bcl11rep_out2)
 
 ```
 

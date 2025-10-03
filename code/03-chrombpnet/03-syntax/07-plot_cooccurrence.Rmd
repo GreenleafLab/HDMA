@@ -1,0 +1,245 @@
+---
+title: "Visualization of motif co-occurrence analyses"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+doc_id <- "07"
+figout <- here("figures/03-chrombpnet/03-syntax/", doc_id, "/"); dir.create(figout, recursive = TRUE)
+out    <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+chrombpnet_dir <- here( "output/03-chrombpnet")
+
+```
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      out.width = '100%', # some interactive figures won't stretch if this is not set
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 2000)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Here we plot the results of motif co-occurrence analyses.
+
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(ggrepel)
+library(cowplot)
+library(pheatmap)
+library(ggseqlogo)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+source(file.path(script_path, "chrombpnet_utils.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+
+
+# Load data
+
+
+
+## Cluster metadata
+
+```{r load_cluster_meta}
+
+cluster_meta <- read_csv(here("output/05-misc/03/TableS2_cluster_meta_qc.csv"))
+
+chrombpnet_models_keep <- read_tsv(here("output/03-chrombpnet/01-models/qc/chrombpnet_models_keep2.tsv"),
+                                   col_names = c("Cluster", "Folds_keep", "Cluster_ID"))
+
+cluster_order <- cluster_meta %>% arrange(organ, L1_annot) %>% pull(Cluster_ChromBPNet)
+organs <- unique(cluster_meta$organ) %>% sort()
+organs[organs == "StomachEsophagus"] <- "Stomach"
+
+head(chrombpnet_models_keep)
+
+```
+
+## Motif data
+
+Intermediate objects:
+
+```{r}
+
+load(file.path(chrombpnet_dir, "03-syntax/01/intermediate_obj.Rda"))
+
+```
+
+
+## Co-occurrence tests
+
+```{r read_tests}
+
+cooc_results <- map_dfr(chrombpnet_models_keep$Cluster,
+                        ~ data.table::fread(here("output/03-chrombpnet/03-syntax/07/", glue("{.x}__motif_cooccurrence_fisher_exact.tsv")), data.table = FALSE))
+
+cooc_results <- cooc_results %>% 
+  left_join(cluster_meta %>% dplyr::select(Cluster_ChromBPNet, organ), by = c("cluster" = "Cluster_ChromBPNet"))
+
+```
+
+
+# Visualize results
+
+```{r cooccurrence_plot, fig.width = 16, fig.height = 13}
+
+motif_order <- c(
+  'CTCF',
+  # promoters
+  'TBP', 'SP/KLF', 'NFY', 'YY1/2', 'NRF1', 'ZNF143', 'BANP/ZBTB33', 'HSF1', 'ETS', 'BZIP', 'RFX', 'SRF',
+  # distal
+  'AP-2', 'NFI', 'NFAT', 'STAT', 'MEF2', 'SOX', 'BZIP:CEBP', 'BHLH', 'TEAD', 'GATA', 'NR:HNF4', 
+  'THRA/B', 'NR', 'ONECUT', 'FOX', 'HNF1A/B', 'HD', 'PAX', 'HD:PROP/ALX', 'POU', 'HD:SIX/ZNF', 'HD:MEIS/PBX',
+  'NKX', 'TCF7L/LEF', 'RUNX', 'NFKB/RELA', 'BCL11A/IRF/SPI'
+)
+
+motifs_neg <- c('ZEB/SNAI', 'HIC', 'BCL11Arep', 'NFYrep', 'YY1/2rep')
+
+# add missing ones
+motif_order <- c(motif_order, setdiff(unique(c(cooc_results$motif_A, cooc_results$motif_B)), c(motif_order, motifs_neg)))
+
+# add negatives
+motif_order <- c(motif_order, motifs_neg)
+
+# plot the proportion of signif results from each organ as a pie chart per motif pair
+cooc_results %>%
+  filter(motif_A %in% motif_order & motif_B %in% motif_order) %>% 
+  group_by(organ, motif_A, motif_B) %>% 
+  count() %>%
+  mutate(motif_A = factor(motif_A, levels = motif_order),
+         motif_B = factor(motif_B, levels = motif_order)) %>%
+  # get upper triangle only
+  filter(as.integer(motif_A) <= as.integer(motif_B)) %>%
+  ggplot(aes(x = "", y = n, fill = organ)) +
+  geom_bar(stat = "identity", width = 1, position = "fill") +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(motif_A ~ motif_B, drop = FALSE) +
+  theme_void() +
+  theme(strip.text.x = element_text(angle = 90, hjust = 0)) +
+  square()
+  
+# then, plot the number of significant results per motif pair
+# (this is a roundabout way to plot a dotplot with facets instead of x,y coordinates,
+# but it allows us to keep the aesthetics similar to the above)
+cooc_results %>%
+  ungroup() %>% 
+  filter(motif_A %in% motif_order & motif_B %in% motif_order) %>% 
+  group_by(motif_A, motif_B) %>% 
+  count() %>%
+  mutate(motif_A = factor(motif_A, levels = motif_order),
+         motif_B = factor(motif_B, levels = motif_order)) %>%
+  # get lower triangle only
+  filter(as.integer(motif_A) >= as.integer(motif_B)) %>%
+  ggplot(aes(x = "", y = "")) +
+  geom_point(aes(size = n, color = n)) +
+  scale_color_gradientn(colors = ylrd) +
+  facet_grid(motif_A ~ motif_B, drop = FALSE) +
+  theme_void() +
+  theme(strip.text.x = element_text(angle = 90, hjust = 0))
+
+```
+
+```{r}
+
+# plot the proportion of signif results from each organ as a pie chart per motif pair
+cooc_results %>%
+  filter(motif_A %in% motif_order & motif_B %in% motif_order) %>% 
+  group_by(organ, motif_A, motif_B) %>% 
+  count() %>%
+  mutate(motif_A = factor(motif_A, levels = motif_order),
+         motif_B = factor(motif_B, levels = motif_order)) %>%
+  filter(motif_A %in% c("NFY", "YY1/2", "NFYrep", "YY1/2rep")) %>% 
+  ggplot(aes(x = "", y = n, fill = organ)) +
+  geom_bar(stat = "identity", width = 1, position = "fill") +
+  coord_polar("y", start = 0) +
+  scale_fill_manual(values = cmap_organ) +
+  facet_grid(motif_A ~ motif_B, drop = TRUE) +
+  theme_void() +
+  theme(strip.text.x = element_text(angle = 90, hjust = 0)) +
+  square()
+
+cooc_results %>%
+  ungroup() %>% 
+  filter(motif_A %in% motif_order & motif_B %in% motif_order) %>% 
+  group_by(motif_A, motif_B) %>% 
+  count() %>%
+  mutate(motif_A = factor(motif_A, levels = motif_order),
+         motif_B = factor(motif_B, levels = motif_order)) %>%
+  filter(motif_A %in% c("NFY", "YY1/2", "NFYrep", "YY1/2rep")) %>% 
+  ggplot(aes(x = "", y = "")) +
+  geom_point(aes(size = n, color = n)) +
+  scale_color_gradientn(colors = ylrd) +
+  facet_grid(motif_A ~ motif_B, drop = TRUE) +
+  theme_void() +
+  theme(strip.text.x = element_text(angle = 90, hjust = 0),
+        legend.position = "bottom")
+
+```
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+sessionInfo()
+
+```
+

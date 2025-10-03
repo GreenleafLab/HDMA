@@ -416,6 +416,8 @@ def extract_hit_data(modisco_obj, contribs_bw, conservation_bw, hits, genome, pa
         
         ohe = [io.reverse_complement(seq) if
                hits_df_subset['strand'].iloc[idx]==revcomp_strand else seq for idx, seq in enumerate(ohe)]
+               
+        # TODO: shouldn't this only be revcomped if the hit is on the revcomp strand?
         contribs = [scores[::-1] for scores in contribs]
 
     # so that the imp_start/imp_end for indexing the CWM match the length of 

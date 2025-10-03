@@ -1,0 +1,351 @@
+---
+title: "Investigating the overlap in peaks, motif instances, etc"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: 
+    code_folding: show
+    theme: flatly
+    highlight: pygments
+    toc: yes
+    toc_float:
+      collapsed: true
+    toc_depth: 4
+    number_sections: yes
+    keep_md: no
+---
+
+```{r config, warning = FALSE, message = FALSE}
+
+# **MODIFY THIS CHUNK**
+library(here)
+kundaje_dir    <- trimws(readr::read_lines(here("code/AK_PROJ_DIR.txt")))
+doc_id         <- "08"
+out            <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
+figout         <- here("figures/03-chrombpnet/03-syntax/", doc_id, "/"); dir.create(figout, recursive = TRUE)
+chrombpnet_dir <- here("output/03-chrombpnet")
+
+```
+
+
+```{r setup, include = FALSE}
+
+# NO NEED TO MODIFY THIS CHUNK
+
+knitr::knit_hooks$set( echo_label = function(before, options, envir) {
+  if ( before ) {
+    # Do nothing
+  } else sprintf('<br><span style="color:#1abc9c">~[output @ *%s*]~</span>',
+                 paste0(options$fig.path, "/", options$label, "...") )
+})
+
+knitr::opts_chunk$set(message = TRUE,
+                      warning = FALSE,
+                      error = FALSE,
+                      cache = FALSE,
+                      fig.path = figout,
+                      fig.keep = "all",
+                      dev = c("png", "pdf"),
+                      cache.lazy = FALSE)
+
+grDevices::pdf.options(useDingbats = FALSE)
+
+options(knitr.table.format = "html") 
+knitr::opts_knit$set(width = 1600)
+
+set.seed(100)
+
+```
+
+***
+
+# Overview
+
+Here we want to investigate the overlap (consistency) of peaks and motif instances across clusters. For example, when
+we see a set of CTCF sites in one cell type vs another, how much of those sites are
+common vs cell type specific? Do positive and negative motifs exhibit different patterns?
+
+# Set up
+
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(readr)
+library(scales)
+library(glue)
+library(purrr)
+library(stringr)
+library(plotly)
+library(ggrepel)
+library(pheatmap)
+
+script_path <- here("code/utils/")
+source(file.path(script_path, "plotting_config.R"))
+source(file.path(script_path, "hdma_palettes.R"))
+source(file.path(script_path, "sj_scRNAseq_helpers.R"))
+
+ggplot2::theme_set(theme_BOR())
+
+```
+
+
+
+# Load data
+
+Cluster and motif metadata:
+
+```{r load_cluster_meta}
+
+load(here("output/03-chrombpnet/03-syntax/01/intermediate_obj.Rda"))
+
+cluster_order <- cluster_meta$Cluster_ChromBPNet[cluster_meta$Cluster_ChromBPNet %in% chrombpnet_models_keep$Cluster]
+length(cluster_order)
+
+organ_map <- cluster_meta %>% distinct(organ, organ_code)
+cmap_cluster <- cluster_meta %>% dplyr::select(Cluster_ChromBPNet, organ_color) %>% tibble::deframe()
+cluster_anno <- cluster_meta %>% 
+  dplyr::select(Organ = organ, Compartment = compartment, Cluster_ChromBPNet) %>% 
+  tibble::column_to_rownames(var = "Cluster_ChromBPNet")
+
+```
+
+
+
+# Overlap in peaks
+
+```{r}
+
+jaccard_peaks <- map_dfr(names(cmap_peaktype),
+                         ~ data.table::fread(
+                           here(glue("{out}/jaccard_results.{.x}.txt")), data.table = FALSE) %>% 
+                           mutate(cluster_A = gsub(glue("peaks.{.x}.|.bed"), "", cluster_A),
+                                  cluster_B = gsub(glue("peaks.{.x}.|.bed"), "", cluster_B),
+                                  clusters = paste0(cluster_A, " - ", cluster_B),
+                                  region = .x))
+
+# this fills out the full heatmap, since we only calculated the upper triangle
+jaccard_peaks_all_pairwise <- bind_rows(
+  jaccard_peaks,
+  jaccard_peaks %>% filter(cluster_A != cluster_B) %>% mutate(cluster_tmp = cluster_A) %>% dplyr::select(-cluster_A) %>% dplyr::rename(cluster_A = cluster_B, cluster_B = cluster_tmp)
+)
+
+# look at the top ones
+jaccard_peaks %>%
+  filter(cluster_A != cluster_B) %>%
+  group_by(region) %>% 
+  slice_max(n = 1, order_by = jaccard_index) %>% 
+  dplyr::select(cluster_A, cluster_B, region, jaccard_index)
+
+jaccard_peaks %>% 
+  group_by(region) %>% 
+  summarize(median = median(jaccard_index))
+
+```
+
+
+```{r jaccard_peaks, fig.width = 4, fig.height = 4}
+
+cardiomyocytes <- cluster_meta %>% filter(L3_annot == "cardiomyocytes") %>% pull(Cluster_ChromBPNet)
+
+jaccard_peaks_cm <- jaccard_peaks %>% 
+  filter(cluster_A %in% cardiomyocytes & cluster_B %in% cardiomyocytes) %>% 
+  filter(jaccard_index != 0) %>% 
+  filter(cluster_A != cluster_B)
+
+jaccard_peaks %>% 
+  # filter out self-self calculations, and 0, which typically 
+  # represents a lack of hits for the given motif in that cell type
+  filter(jaccard_index != 0) %>% 
+  filter(cluster_A != cluster_B) %>% 
+  ggplot(aes(x = region, y = jaccard_index)) +
+  geom_boxplot(aes(fill = region), outliers = FALSE, fill = "gray80") +
+  geom_point(data = jaccard_peaks_cm, alpha = 0.3, size = 3, color = "red") +
+  scale_fill_manual(values = cmap_peaktype) +
+  xlab("Motif") + ylab("Jaccard index (peak overlap)") +
+  ggtitle("Pairwise peak overlap by region type") +
+  ylim(c(0, 1))
+
+```
+
+
+## Heatmaps {.tabset}
+
+```{r}
+
+heatmap_fun <- purrr::partial(
+  pheatmap,
+  border_color = NA,
+  color = ylrd,
+  annotation_col = cluster_anno,
+  annotation_row = cluster_anno,
+  cellwidth = 4,
+  cellheight = 4,
+  fontsize_row = 5,
+  fontsize_col = 5,
+  annotation_colors = list("Organ" = cmap_organ,
+                           "Compartment" = cmap_compartment2))
+
+plot_peak_heatmaps <- function(key, cluster = TRUE) {
+  
+  jaccard_peaks_mat <- jaccard_peaks_all_pairwise %>% 
+    filter(region == key) %>% 
+    dplyr::select(cluster_A, cluster_B, jaccard_index) %>% 
+    spread(cluster_B, jaccard_index) %>% 
+    tibble::column_to_rownames("cluster_A") %>% 
+    as.matrix()
+  
+  if (cluster) {
+    
+    heatmap_fun(mat = jaccard_peaks_mat[cluster_order, cluster_order],
+                main = "Promoter similarity",
+                filename = glue("{figout}/heatmap.{key}.cluster.png"))
+    
+    knitr::include_graphics(glue("{figout}/heatmap.{key}.cluster.png"))
+    
+  } else {
+    
+    heatmap_fun(mat = jaccard_peaks_mat[cluster_order, cluster_order],
+                cluster_rows = FALSE,
+                cluster_cols = FALSE,
+                main = "Promoter similarity",
+                filename = glue("{figout}/heatmap.{key}.dend_order.png"))
+    
+    knitr::include_graphics(glue("{figout}/heatmap.{key}.dend_order.png"))
+    
+  }
+  
+}
+
+```
+
+
+### Promoter
+
+```{r}
+
+plot_peak_heatmaps("Promoter")
+plot_peak_heatmaps("Promoter", cluster = TRUE)
+
+```
+
+### Distal
+
+```{r}
+
+plot_peak_heatmaps("Distal")
+plot_peak_heatmaps("Distal", cluster = TRUE)
+
+```
+
+
+### Intronic
+
+```{r}
+
+plot_peak_heatmaps("Intronic")
+plot_peak_heatmaps("Intronic", cluster = TRUE)
+
+```
+
+
+### Exonic
+
+```{r}
+
+plot_peak_heatmaps("Exonic")
+plot_peak_heatmaps("Exonic", cluster = TRUE)
+
+```
+
+
+# Overlap in hits for individual motifs
+
+```{r overlap_hits, fig.width = 6, fig.height = 4}
+
+jaccard_pos <- map_dfr(c("CTCF", "NFY", "YY1"),
+                       ~ data.table::fread(
+                         here(glue("{out}/jaccard_results.{.x}.pos_patterns.txt")), data.table = FALSE) %>% 
+                         mutate(cluster_A = gsub(glue("hits.{.x}.|.bed"), "", cluster_A),
+                                cluster_B = gsub(glue("hits.{.x}.|.bed"), "", cluster_B),
+                                motif = .x,
+                                class = "pos_patterns"))
+
+jaccard_neg <- map_dfr(c("NFY", "YY1", "ZEB", "HIC"),
+                       ~ data.table::fread(
+                         here(glue("{out}/jaccard_results.{.x}.neg_patterns.txt")), data.table = FALSE) %>% 
+                         mutate(cluster_A = gsub(glue("hits.{.x}.|.bed"), "", cluster_A),
+                                cluster_B = gsub(glue("hits.{.x}.|.bed"), "", cluster_B),
+                                motif = .x,
+                                class = "neg_patterns"))
+
+jaccard_pos_neg <- bind_rows(jaccard_neg, jaccard_pos) %>% 
+  # filter out self-self calculations, and 0, which typically 
+  # represents a lack of hits for the given motif in that cell type
+  filter(jaccard_index != 0) %>% 
+  filter(cluster_A != cluster_B) %>% 
+  mutate(class = ifelse(class == "pos_patterns", "positive", "negative"))
+
+jaccard_pos_neg_cm <- jaccard_pos_neg %>% 
+  filter(cluster_A %in% cardiomyocytes & cluster_B %in% cardiomyocytes)
+
+jaccard_pos_neg %>% 
+  ggplot(aes(x = class, y = jaccard_index)) +
+  geom_boxplot(aes(fill = motif), outliers = FALSE, fill = "gray80") +
+  geom_point(data = jaccard_pos_neg_cm, alpha = 0.3, size = 3, color = "red") +
+  facet_grid(. ~ motif, scales = "free_x", space = "free_x") +
+  xlab("Motif") + ylab("Jaccard index (instance overlap)") +
+  ggtitle("Pairwise motif instance overlap") +
+  ylim(c(0, 1))
+
+```
+
+
+
+
+# Switching direction for dual motifs
+
+```{r}
+
+jaccard_dual_switch <- map_dfr(c("NFY", "YY1"),
+                         ~ data.table::fread(
+                           here(glue("{out}/jaccard_results.{.x}_switch.txt")), data.table = FALSE) %>% 
+                           mutate(cluster_A = gsub(glue("hits.{.x}.|.bed"), "", cluster_A),
+                                  cluster_B = gsub(glue("hits.{.x}.|.bed"), "", cluster_B),
+                                  clusters = paste0(cluster_A, " -> ", cluster_B),
+                                  motif = .x))
+
+```
+
+
+```{r jaccard_switch_dual, fig.width = 4, fig.height = 4}
+
+jaccard_dual_cm <- jaccard_dual_switch %>% 
+  filter(cluster_A %in% cardiomyocytes & cluster_B %in% cardiomyocytes)
+
+jaccard_dual_switch %>% 
+  ggplot(aes(x = motif, y = jaccard_index)) +
+  geom_boxplot(aes(fill = motif), outlier.alpha = 0.5, outlier.shape = 21, fill = "gray80") +
+  geom_point(data = jaccard_dual_cm, alpha = 0.3, size = 3, color = "red") +
+  xlab("Motif") + ylab("Jaccard index (switching of the same sequence)") +
+  ggtitle("Pairwise hit overlap for dual motifs") +
+  ylim(c(0, 1))
+
+jaccard_dual_switch %>% 
+  ggplot(aes(x = motif, y = jaccard_index)) +
+  geom_boxplot(aes(fill = motif), outlier.alpha = 0.5, outlier.shape = 21, fill = "gray80") +
+  geom_point(data = jaccard_dual_cm, alpha = 0.3, size = 3, color = "red") +
+  xlab("Motif") + ylab("Jaccard index (switching of the same sequence)") +
+  ggtitle("Pairwise hit overlap for dual motifs")
+
+```
+
+
+# Session info
+
+```{r sinfo, cache = FALSE}
+
+sessionInfo()
+
+```
+

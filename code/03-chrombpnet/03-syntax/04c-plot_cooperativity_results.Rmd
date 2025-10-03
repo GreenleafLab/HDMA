@@ -18,7 +18,7 @@ output:
 
 # **MODIFY THIS CHUNK**
 library(here)
-kundaje_dir    <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+kundaje_dir    <- trimws(readr::read_lines(here("code/AK_PROJ_DIR.txt")))
 doc_id         <- "04c"
 out            <- here( "output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
 figout         <- here( "figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
@@ -63,8 +63,13 @@ set.seed(100)
 Here, we load the results of *in silico* marginalizations to assess motif
 cooperativity/synergy and syntax constraints.
 
-We will assign motif pairs as having synergy or not, and having hard or soft
+Firstly, for each composite motif, we focus on the cluster with the most instances, and evaluate
+synergy in that cell type. We will assign motif pairs as having synergy or not, and having hard or soft
 syntax (or both or neither).
+
+Secondly, we run the *in silico* marginalizations for every composite motif in 
+every cell type, to more generally assess specificity of the results and investigate
+model predictions on motifs for TFs that are not expressed to be co-expressed.
 
 
 # Set up
@@ -103,7 +108,6 @@ ggplot2::theme_set(theme_BOR() + theme(strip.background = element_blank()))
 
 
 
-
 # Load data
 
 ## Motif data
@@ -139,9 +143,13 @@ head(modisco_merged)
 
 ## In silico marginalization results
 
+### Experiments in the cell type clusters of focus
+
+Path to the full pipeline for clusters of focus:
+
 ```{r}
 
-ism_dir <- file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/")
+ism_dir <- file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization_full/")
 fs::dir_exists(ism_dir)
 
 ```
@@ -150,15 +158,16 @@ List of composites to test:
 
 ```{r load_comp}
 
-compo_to_test <- read_tsv("04b-composites_to_test.tsv")
+compo_to_test <- read_tsv(here("code/03-chrombpnet/03-syntax/04b-composites_to_test.tsv")) %>% 
+  filter(test_spacing == "Y")
 compo_to_test$motif_name_safe <- gsub("\\/", "\\.", compo_to_test$motif_name)
-compo_to_test$done <- ifelse(file.exists(paste0(ism_dir, compo_to_test$motif_name_safe, "/.done")),
+compo_to_test$done <- ifelse(file.exists(file.path(ism_dir, compo_to_test$motif_name_safe, compo_to_test$Cluster, ".done")),
                              TRUE,
                              FALSE)
 
-sum(compo_to_test$done)
+glue("{sum(compo_to_test$done)/nrow(compo_to_test)*100}%")
 
-compo_to_test_done <- compo_to_test %>% filter(done) %>% filter(test_spacing == "Y") %>%
+compo_to_test <- compo_to_test %>%
   dplyr::rename(seqA = test_seqA, seqB = test_seqB)
 
 ```
@@ -170,10 +179,10 @@ Check for duplicates:
 
 # sort the two motif sequences alphabetically so we can find duplicates even
 # when the order is swapped
-pairs <- map_dfr(1:nrow(compo_to_test_done), function(i) {
+pairs <- map_dfr(1:nrow(compo_to_test), function(i) {
   
-  motifs <- compo_to_test_done[i, c("seqA", "seqB")] %>% unlist() %>% sort()
-  data.frame(motif_name = compo_to_test_done$motif_name[i],
+  motifs <- compo_to_test[i, c("seqA", "seqB")] %>% unlist() %>% sort()
+  data.frame(motif_name = compo_to_test$motif_name[i],
              A = motifs[[1]],
              B = motifs[[2]])
   
@@ -189,29 +198,28 @@ Outputs of the in silico marginalization experiments:
 
 ```{r wilcoxon}
 
-result_outs <- map_dfr(compo_to_test_done$motif_name_safe,
-                       ~ data.table::fread(glue("{ism_dir}/{.x}/results.tsv"), data.table = FALSE)) %>% 
-  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
+result_outs <- pmap_dfr(list(compo_to_test$motif_name_safe, compo_to_test$Cluster, compo_to_test$motif_name),
+                        ~ data.table::fread(file.path(ism_dir, ..1, ..2, "results.tsv"), data.table = FALSE) %>% 
+                          mutate(motif_name = ..3)) %>% 
+  left_join(compo_to_test %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
   dplyr::select(-seqA_palindrome, -seqB_palindrome)
 
 ```
-
-
 
 
 Z-scores on the marginal joint effects:
 
 ```{r load_z, message = FALSE}
 
-z_scores <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
-                     function(motif_safe, motif) {
+z_scores <- pmap_dfr(list(compo_to_test$motif_name_safe, compo_to_test$Cluster, compo_to_test$motif_name),
+                     function(motif_safe, cluster, motif) {
                        
-                       df <- data.table::fread(glue("{ism_dir}/{motif_safe}/Z_scores.tsv"), data.table = FALSE) %>% 
+                       df <- data.table::fread(file.path(ism_dir, motif_safe, cluster, "Z_scores.tsv"), data.table = FALSE) %>% 
                          mutate(motif_name = motif)
                        df
                        
                      })  %>% 
-  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name")
+  left_join(compo_to_test %>% dplyr::select(motif_name, category), by = "motif_name")
 
 ```
 
@@ -220,10 +228,11 @@ Summarized effects for solo motifs:
 
 ```{r load_solo, message = FALSE}
 
-solo_df <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
-                    ~ data.table::fread(glue("{ism_dir}/{.x}/summarized_effects_solo.tsv"), data.table = FALSE) %>% 
-                      mutate(motif_name = .y))  %>% 
-  left_join(compo_to_test_done %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
+solo_df <- pmap_dfr(list(compo_to_test$motif_name_safe, compo_to_test$Cluster, compo_to_test$motif_name),
+                    ~ data.table::fread(file.path(ism_dir, ..1, ..2, "summarized_effects_solo.tsv"),
+                                        data.table = FALSE) %>% 
+                      mutate(motif_name = ..3))  %>% 
+  left_join(compo_to_test %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
   dplyr::rename(orientation = key)
 
 ```
@@ -233,14 +242,75 @@ Summarized effects for spaced motifs:
 
 ```{r load_spacing, message = FALSE}
 
-spacing_df <- map2_dfr(compo_to_test_done$motif_name_safe, compo_to_test_done$motif_name,
-                       ~ data.table::fread(glue("{ism_dir}/{.x}/summarized_effects_per_spacing.tsv"),
-                                           data.table = FALSE) %>% 
-                         mutate(motif_name = .y)) %>% 
-  left_join(compo_to_test_done %>% dplyr::select(motif_name, category, seqA, seqB), by = "motif_name") %>% 
+spacing_df <- pmap_dfr(list(compo_to_test$motif_name_safe, compo_to_test$Cluster, compo_to_test$motif_name),
+                       ~ data.table::fread(file.path(ism_dir, ..1, ..2, "summarized_effects_per_spacing.tsv"), data.table = FALSE) %>% 
+                         mutate(motif_name = ..3)) %>% 
+  left_join(compo_to_test %>% dplyr::select(motif_name, category, seqA, seqB), by = "motif_name") %>% 
   dplyr::rename(orientation = key) %>% 
   rowwise() %>% 
   mutate(dist_center_to_center = round(nchar(seqA)/2) + spacing + round(nchar(seqB)/2))
+
+```
+
+### All experiments
+
+All experiments in all cell types:
+
+```{r load_all}
+
+ism_dir_all <- file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization")
+fs::dir_exists(ism_dir_all)
+
+```
+
+List of composites to test:
+
+```{r load_comp2}
+
+# get all tests performed (all motif pairs x all clusters)
+all_tests <- expand_grid(
+  motif_name_safe = compo_to_test$motif_name_safe,
+  cluster = chrombpnet_models_keep$Cluster
+)
+
+all_tests$done <- ifelse(fs::file_exists(file.path(ism_dir_all, all_tests$motif_name_safe, all_tests$cluster, ".done")),
+                         TRUE,
+                         FALSE)
+
+sum(all_tests$done)
+sum(all_tests$done)/nrow(all_tests)
+nrow(all_tests)-sum(all_tests$done)
+
+all_tests2 <- all_tests %>% filter(done) %>%
+  left_join(compo_to_test %>% dplyr::select(-Cluster, -done), by = "motif_name_safe")
+
+```
+
+
+Outputs of the *in silico* marginalization experiments:
+
+```{r results_all_tests}
+
+result_outs_allexp <- map2_dfr(all_tests2$motif_name_safe, all_tests2$cluster,
+                            ~ data.table::fread(file.path(ism_dir_all, .x, .y, "results.tsv"), data.table = FALSE)
+                            %>% mutate(cluster = .y)) %>% 
+  left_join(compo_to_test %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
+  dplyr::select(-seqA_palindrome, -seqB_palindrome)
+
+nrow(result_outs_allexp)
+
+```
+
+Outputs of the solo tests:
+
+```{r load_solo2, message = FALSE}
+
+solo_df_allexp <- pmap_dfr(list(all_tests2$motif_name_safe, all_tests2$cluster, all_tests2$motif_name),
+                    ~ data.table::fread(file.path(ism_dir_all, ..1, ..2, "summarized_effects_solo.tsv"),
+                                        data.table = FALSE) %>% 
+                      mutate(motif_name = ..3, cluster = ..2))
+
+head(solo_df_allexp)
 
 ```
 
@@ -249,7 +319,8 @@ Save intermediates:
 
 ```{r}
 
-save(spacing_df, solo_df, z_scores, result_outs, compo_to_test, file = glue("{out}/intermediate_obj.Rda"))
+save(spacing_df, solo_df, z_scores, result_outs, compo_to_test, result_outs_allexp, solo_df_allexp,
+     file = glue("{out}/intermediate_obj.Rda"))
 
 ```
 
@@ -284,7 +355,7 @@ shapemap_result <- c("no synergy"  = 1,
 
 cmap_category["not cooperative"] <- "gray80"
 
-palette_motifs <- colorRampPalette(RColorBrewer::brewer.pal(9, "Blues")[3:9])(n=nrow(compo_to_test_done))
+palette_motifs <- colorRampPalette(RColorBrewer::brewer.pal(9, "Blues")[3:9])(n=nrow(compo_to_test))
 
 ```
 
@@ -297,7 +368,7 @@ We want to combine results into one dataframe:
 ```{r pval}
 
 # join results
-all_results_best <- compo_to_test_done %>%
+all_results_best <- compo_to_test %>%
   dplyr::select(motif_name, Cluster, n_hits_per_cluster, idx_uniq, annotation_broad, component_motifA, component_motifB, seqA, seqB) %>% 
   left_join(result_outs, by = "motif_name") %>% 
   left_join(z_scores %>% dplyr::select(-category),
@@ -330,13 +401,34 @@ all_results_spacing <- spacing_df %>%
   left_join(solo_df %>% filter(orientation == "A + B") %>%
               dplyr::select(-orientation, -counts_after_mean, -counts_after_sd, -effect_sd, sum_effect = effect_mean),
             by = c("motif_name", "category")) %>% 
-  mutate(joint_vs_ind_per_arragement = joint_effect - sum_effect)
+  mutate(joint_vs_ind_per_arrangement = joint_effect - sum_effect)
 
 ```
 
-Let's annotate the best orientation for each motif:
+
+Similarly, for the set of tests of all motifs in all cell types, we compute difference
+between joint and independent effects:
 
 ```{r}
+
+# adjust p-value
+result_outs_allexp$joint_vs_sum_p_value_adj <- p.adjust(result_outs_allexp$joint_vs_sum_p_value, method = "BH")
+
+all_results_allexp <- result_outs_allexp %>% 
+  left_join(solo_df_allexp %>% filter(key == "A + B") %>%
+              mutate(sum_effect = effect_mean) %>% 
+              dplyr::select(-key, -counts_after_mean, -counts_after_sd, -effect_sd, -effect_mean),
+            by = c("motif_name", "cluster")) %>%
+  mutate(joint_vs_ind_max = joint_effect - sum_effect) %>% 
+  mutate(log10padj = -log10(joint_vs_sum_p_value_adj))
+
+```
+
+
+
+Let's annotate the best orientation for each motif:
+
+```{r get_best_ori}
 
 all_results_spacing$is_best_orientation <- FALSE
 
@@ -347,6 +439,7 @@ get_best_orientation <- function(motif) {
 }
 
 motifs <- unique(all_results_spacing$motif_name)
+print(motifs)
 
 for (i in seq_along(motifs)) {
   
@@ -359,7 +452,7 @@ for (i in seq_along(motifs)) {
 
 Let's compute the max difference in joint vs ind. effects at the best orientation, in the 20-150bp range:
 
-```{r}
+```{r med_distance_effect}
 
 tmp <- all_results_spacing %>% 
   filter(is_best_orientation) %>% 
@@ -374,7 +467,6 @@ tmp <- all_results_spacing %>%
 all_results_best <- all_results_best %>% left_join(tmp, by = "motif_name")
 
 ```
-
 
 
 # Assess coooperativity and syntax requirements
@@ -461,6 +553,19 @@ z_scores <- z_scores %>% mutate(orientation = ifelse(orientation == "HT", "A,B H
 
 ```
 
+Similarly for the analysis of all motifs x all cell types, we simply assign each result
+as synergistic or not:
+
+```{r}
+
+all_results_allexp <- all_results_allexp %>% 
+  mutate(result = case_when(
+    joint_vs_sum_p_value_adj < p_val_thresh & joint_vs_ind_max > delta_thresh ~ "synergy" ,
+    TRUE ~ "no synergy"))
+
+table(all_results_allexp$result)
+
+```
 
 
 ## Account for palindromic sequences
@@ -618,6 +723,14 @@ all_results_best %>%
   mutate(result = factor(result, levels = c("hard", "hard & soft", "soft", "no synergy"))) %>% 
   arrange(result) %>% 
   write_csv(glue("{out}/TABLE_ism_synergy_results.csv"))
+
+```
+
+Save results:
+
+```{r}
+
+save(all_results_best, all_results_spacing, all_results_allexp, file = glue("{out}/all_results.Rda"))
 
 ```
 
@@ -1121,7 +1234,7 @@ This implies that our categories have different overall behavirous across 200 bp
 
 all_results_spacing %>% 
   filter(is_best_orientation) %>% 
-  ggplot(aes(x = dist_center_to_center, y = joint_vs_ind_per_arragement, group = motif_name, label = motif_name)) +
+  ggplot(aes(x = dist_center_to_center, y = joint_vs_ind_per_arrangement, group = motif_name, label = motif_name)) +
   geom_hline(yintercept = 0, color = "black", alpha = 0.3, lwd = 1) +
   geom_line(alpha = 0.3, aes(color = motif_name)) +
   annotate('point', x = 10.5, y = 1.4,
@@ -1282,7 +1395,7 @@ and show the results at that one:
 all_results_spacing %>% 
   mutate(motif_name = factor(motif_name, levels = motif_order2)) %>% 
   ggplot(aes(x = spacing, y = motif_name)) +
-  geom_tile(aes(fill = joint_vs_ind_per_arragement)) +
+  geom_tile(aes(fill = joint_vs_ind_per_arrangement)) +
   facet_grid(result ~ ., scales = "free_y", space = "free_y") + 
   scale_fill_gradient2(low = "#2166AC", mid = "white", high = "#B2182B", midpoint = 0) +
   theme(strip.background = element_blank(),
@@ -1570,7 +1683,7 @@ plot_curves("423|RFX_SOX",          limits = c(0, 0.6), facet = FALSE, best_orie
 ```{r coord_profiles}
 
 pred_profiles_47 <- data.table::fread(
-  file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/47|BHLH:TWIST.ZBTB_HD/profile_preds_A,B HT.tsv"),
+  file.path(ism_dir, "47|BHLH:TWIST.ZBTB_HD/Skin_c0/profile_preds_A,B HT.tsv"),
   data.table = FALSE)
 
 pred_profiles_47 %>% 
@@ -1603,7 +1716,7 @@ spacing_df %>%
 ```{r 74_profiles}
 
 pred_profiles_74 <- data.table::fread(
-  file.path(chrombpnet_dir, "03-syntax/04b/in_silico_marginalization/74|BHLH_HD:PBX1.PDX1/profile_preds_B,A HT.tsv"),
+  file.path(ism_dir, "74|BHLH_HD:PBX1.PDX1/Muscle_c0/profile_preds_B,A HT.tsv"),
   data.table = FALSE)
 
 pred_profiles_74 %>% 
@@ -1630,6 +1743,113 @@ spacing_df %>%
 ```
 
 
+# Marginalizations per motif across cell types
+
+Let's first look at the distribution of effects across all experiments:
+
+```{r distributions, fig.width = 7, fig.height = 4}
+
+all_results_best %>% filter(result != "no synergy") %>% nrow()
+
+combined_df <- bind_rows(
+  all_results_allexp %>% mutate(set = "background (138 composites x 189 cell types, N=26082)") %>% dplyr::select(set, effect = joint_vs_ind_max),
+  all_results_best %>% mutate(set = "foreground (reported synergistic pairs, N=67)") %>% filter(result != "no synergy") %>% dplyr::select(set, effect = joint_vs_ind_max))
+
+palette_test <- c("background (138 composites x 189 cell types, N=26082)" = "gray",
+                  "foreground (reported synergistic pairs, N=67)" = "red")
+
+combined_df %>% 
+  ggplot(aes(x = effect)) +
+  geom_histogram(aes(fill = set), alpha = 0.7, bins = 50) +
+  scale_fill_manual(values = palette_test) +
+  facet_wrap(~ set, scales = "free_y", ncol = 1) + 
+  xlab("Joint effect - independent effect (log counts)") +
+  ylab("Number of tests") +
+  no_legend()
+
+```
+
+Make a dotplot summarizing all the significant tests:
+
+```{r dotplot_all_clusters, fig.width = 20, fig.height = 12}
+
+motif_order <- read_lines(
+  here("code/03-chrombpnet/03-syntax/04c-motif_order.txt")) %>% 
+  unique()
+
+all(motif_order %in% unique(all_results_allexp$motif_name))
+all(unique(all_results_allexp$motif_name) %in% motif_order)
+
+cluster_order <- cluster_meta$Cluster_ChromBPNet
+
+all_results_allexp_filt <- all_results_allexp %>% 
+  mutate(motif_name = factor(motif_name, levels = rev(motif_order)),
+         cluster = factor(cluster, levels = cluster_order)) %>% 
+  filter(result == "synergy")
+
+nrow(all_results_allexp)
+nrow(all_results_allexp_filt)
+nrow(all_results_allexp_filt)/nrow(all_results_allexp)
+
+all_results_allexp_filt$motif_name %>% unique %>% length
+
+all_results_allexp_filt %>% 
+  ggplot(aes(y = motif_name, x = cluster)) +
+  geom_point(aes(size = log10padj, color = joint_effect, stroke = 0)) +
+  scale_size(range = c(0, 3)) +
+  # to keep all clusters in the dendrogram
+  scale_x_discrete(drop = FALSE) +
+  scale_color_gradientn(colors = ylrd) +
+  rotate_x() +
+  theme(
+    axis.text.y = element_text(size = 5),
+    axis.text.x = element_text(size = 5)
+  )
+
+```
+
+Plot an annotation for motifs indicating the number of cell types 
+where the motif is predicted to be synergistic:
+
+```{r synergy_organ_barplot, fig.width = 15, fig.height = 5}
+
+all_results_allexp_filt %>%
+  group_by(cluster, motif_name) %>%
+  count() %>% 
+  left_join(cluster_meta %>% dplyr::select(Cluster_ChromBPNet, organ),
+            by = c("cluster" = "Cluster_ChromBPNet")) %>% 
+  mutate(motif_name = factor(motif_name, levels = rev(motif_order))) %>% 
+  ggplot(aes(x = motif_name, y = n)) +
+  geom_col(aes(fill = organ), position = "fill") +
+  scale_fill_manual(values = cmap_organ) +
+  theme(
+    axis.text.y = element_text(size = 5),
+    axis.text.x = element_text(size = 5)
+  ) +
+  rotate_x()
+
+```
+
+Plot an annotation for motifs indicating the distribution of effects
+across cell types per motif:
+
+```{r synergy_organ_boxplot, fig.width = 15, fig.height = 3}
+
+all_results_allexp %>% 
+  dplyr::left_join(cluster_meta %>%
+                     dplyr::select(Cluster_ChromBPNet, organ),
+                   by = c("cluster" = "Cluster_ChromBPNet")) %>% 
+  filter(motif_name %in% all_results_allexp_filt$motif_name) %>% 
+  mutate(motif_name = factor(motif_name, levels = motif_order)) %>% 
+  ggplot(aes(x = motif_name, y = joint_vs_ind_max)) +
+  geom_boxplot(fill = "gray90", outliers = FALSE) +
+  geom_hline(yintercept = delta_thresh, linetype = "dashed", color = "red") +
+  theme(
+    axis.text.x = element_text(size = 5)
+  ) +
+  rotate_x()
+
+```
 
 # Interactive effects per motif {.tabset}
 
