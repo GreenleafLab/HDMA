@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --output=../../logs/03-chrombpnet/03/04b/%x-%A_%a.out
 #SBATCH -p akundaje,wjg
-#SBATCH --time=36:00:00
+#SBATCH --time=12:00:00
 #SBATCH -c 2
 #SBATCH --mem=40G
 #SBATCH -G 1
@@ -38,7 +38,3 @@ echo "Executing: python -u 04b-in_silico_test_cooperativity.py --env sherlock --
 python -u 04b-in_silico_test_cooperativity.py \
     --env sherlock \
     --cluster ${CLUSTER}
-    
-    # for debugging:
-    #  \
-    # --motif '434|SOX_SOX#1' # TODO

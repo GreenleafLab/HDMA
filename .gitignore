@@ -27,6 +27,7 @@ code/04-enhancers/profile/config.yaml
 code/05-misc/DATA*
 code/check_paths.sh
 code/03-chrombpnet/.*
+code/03-chrombpnet/03-syntax/scratch/
 
 # plots
 */Rplots.pdf

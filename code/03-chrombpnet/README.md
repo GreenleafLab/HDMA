@@ -99,6 +99,9 @@ This produces one MoDISco h5 object per supercluster, containing merged, non-red
 - `05`: in silico analysis of cell type-specific cooperativity
   - `05a`: run the analysis
   - `05b`: visualize results
+- `06`: *in silico* ablations of negative motifs
+- `07`: compute motifs with enriched co-occurrence
+- `08`: investigate overlaps in peaks and motif instance calls across clusters
 
 
 _**NOTE**_: variant scoring using ChromBPNet models is done in the `code/06-variants` directory.

@@ -18,7 +18,7 @@ output:
 
 # **MODIFY THIS CHUNK**
 library(here)
-kundaje_dir    <- trimws(readr::read_lines("../../AK_PROJ_DIR.txt"))
+kundaje_dir    <- trimws(readr::read_lines(here("code/AK_PROJ_DIR.txt")))
 doc_id         <- "02"
 out            <- here("output/03-chrombpnet/03-syntax/", doc_id); dir.create(out, recursive = TRUE)
 figout         <- here("figures/03-chrombpnet/03-syntax", doc_id, "/"); dir.create(figout, recursive = TRUE)
@@ -426,7 +426,8 @@ region_gr <- str_to_gr(region)
 
 region_zoom <- "chr5:150129885-150130189"
 
-endo_clusters <- c("Muscle_c5", "Spleen_c2", "Thymus_c7", "Brain_c13", "Liver_c10", "Stomach_c10")
+endo_clusters <- c("Muscle_c5", "Spleen_c2", "Thymus_c7", "Brain_c13",
+                   "Liver_c10", "Stomach_c10")
 
 ```
 
@@ -451,6 +452,7 @@ track_cov <- trackplot_coverage2(
 
 ```{r endo_broad_pred, eval = FALSE}
 
+tracks_pred_un <- list()
 tracks_pred <- list()
 tracks_contrib <- list()
 
@@ -460,7 +462,12 @@ for (i in endo_clusters) {
   organ <- str_split(i, pattern = "\\_")[[1]][1]
   
   message(i)
-  
+
+  # uncorrected signal
+  bw_pred_un <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/predictions/uncorrected/{i}_avg_chrombpnet_uncorrected.bw"))
+  bw_unc_filt <- bw_pred_un[bw_pred_un %over% region_gr]
+  rm(bw_pred_un)
+    
   # predicted signal
   bw_pred <- rtracklayer::import.bw(glue("{chrombpnet_dir}/01-models/predictions/bias_corrected/{i}_avg_chrombpnet_nobias.bw"))
   
@@ -473,12 +480,13 @@ for (i in endo_clusters) {
   bw_contrib_filt <- bw_contrib[bw_contrib %over% region_gr]
   rm(bw_contrib)
   
+  tracks_pred_un[[i]] <- bw_unc_filt
   tracks_pred[[i]] <- bw_filt
   tracks_contrib[[i]] <- bw_contrib_filt
   
 }
 
-save(tracks_pred, tracks_contrib, file = glue("{out}/tracks_endo.Rda"))
+save(tracks_pred_un, tracks_pred, tracks_contrib, file = glue("{out}/tracks_endo.Rda"))
 
 ```
 
@@ -507,6 +515,24 @@ track_preds_zoom <- imap(tracks_pred, ~ trackplot_bw(
   color       = cmap_cluster[.y],
   tile_width = 1))
 
+# plot all the uncorrected predictions in the wide region
+track_preds_un_broad <- imap(tracks_pred_un, ~ trackplot_bw(
+  bw          = .x,
+  region      = region,
+  facet_label = .y,
+  track_label = "Pred (uncorrected)",
+  color       = cmap_cluster[.y],
+  tile_width = 5) + highlight_region(region_zoom, alpha = 0.4, color = "yellow"))
+
+# plot all the predictions in the zoomed region
+track_preds_un_zoom <- imap(tracks_pred_un, ~ trackplot_bw(
+  bw          = .x,
+  region      = region_zoom,
+  facet_label = .y,
+  track_label = "Pred (uncorrected)",
+  color       = cmap_cluster[.y],
+  tile_width = 1))
+
 # plot all the contributions in the zoomed region
 # this version prints the ymin-ymax scale
 track_contribs <- imap(tracks_contrib, ~ trackplot_contribs_BL(
@@ -515,7 +541,7 @@ track_contribs <- imap(tracks_contrib, ~ trackplot_contribs_BL(
   facet_label = .y,
   track_label = "Contributions",
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  ymax = 0.25, ymin = -0.039,
+  # ymax = 0.25, ymin = -0.039,
   rel_height = 1) + xlab(NULL))
 
 ```
@@ -548,13 +574,20 @@ scale_plot <- trackplot_scalebar(region)
 ```
 
 
-```{r trackplot_endothelial, fig.width = 11, fig.height = 13}
+```{r trackplot_endothelial, fig.width = 13, fig.height = 10}
 
-trackplot_combine2(c(list(scale_plot), list(track_cov), track_preds_broad, list(track_genes), track_preds_zoom, track_contribs, list(track_hits)),
+trackplot_combine2(c(list(scale_plot), list(track_cov),
+                     track_preds_un_broad,
+                     track_preds_broad,
+                     list(track_genes),
+                     track_preds_zoom,
+                     track_contribs,
+                     list(track_hits)),
                   title = str_to_pretty(region)) &
   ggplot2::theme(legend.direction = "vertical")
 
 ```
+
 
 
 

@@ -296,7 +296,7 @@ def main(args):
 		X_nonpeaks = X_nonpeaks.float()
 
 	# for each composite motif, run in silico marginalziations at different spacings
-	for row in compo_to_test.itertuples():
+	for row in compo_to_test[::-1].itertuples():
 
 		datetimenow = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
 
