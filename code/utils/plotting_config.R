@@ -9,6 +9,13 @@ suppressPackageStartupMessages({
 })
 
 
+col2hex <- function(x, alpha = FALSE) {
+  args <- as.data.frame(t(col2rgb(x, alpha = alpha)))
+  args <- c(args, list(names = x, maxColorValue = 255))
+  do.call(rgb, args)
+}
+
+
 theme_BOR <- function(base_size=14, base_family="Helvetica", border = TRUE) {
   library(grid)
   library(ggthemes)

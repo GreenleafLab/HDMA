@@ -343,6 +343,7 @@ trackplot_bw <- function(bw,
                          plot_as = "area",
                          clip_quantile = 0.999,
                          ymin_zero = TRUE,
+                         ymax = NULL,
                          rasterize = TRUE,
                          return_data = FALSE,
                          color = "black") {
@@ -404,7 +405,12 @@ trackplot_bw <- function(bw,
   
   # get clipped ymax: note that we do this on the data in the bigwig *prior* to
   # completing the positions with 0s
-  ymax <- quantile(bw_filt$score, clip_quantile)
+  if (is.null(ymax)){
+    
+    ymax <- quantile(bw_filt$score, clip_quantile)
+    
+  }
+  
   ymax_accuracy <- 10^as.integer(log10(0.01 * ymax))
   
   if (!ymin_zero) {
