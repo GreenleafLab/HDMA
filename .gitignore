@@ -29,6 +29,7 @@ code/check_paths.sh
 code/03-chrombpnet/.*
 code/03-chrombpnet/03-syntax/.*
 code/03-chrombpnet/03-syntax/scratch/
+code/05-misc/scratch/
 
 # plots
 */Rplots.pdf
