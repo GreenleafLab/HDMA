@@ -1,4 +1,5 @@
 # Human Development Multiomic Atlas
+[![DOI](https://zenodo.org/badge/975296076.svg)](https://doi.org/10.5281/zenodo.17298234)
 
 ![](img/hdma_logo_small.png)
 
