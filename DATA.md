@@ -171,7 +171,7 @@ cut -f 1 table_s14.tsv | sort | uniq
 # ArchR projects
 # Bigwigs
 # BPCells objects
-# Cell metadata, acCREs, ChromBPNet training regions, instances, motif lexicon
+# Cell metadata, caCREs, ChromBPNet training regions, instances, motif lexicon
 # ChromBPNet counts mean contribution scores (h5)
 # ChromBPNet models
 # ChromBPNet models, and shared bias model
@@ -401,7 +401,7 @@ per cluster, and motif instances per cluster is provided at [![DOI](https://zeno
 - `transcripts`: GENCODE human release 42 gene annotation
 - `loops_p2g`: Peak2Gene loops per organ or globally across organs
 - `loops_abc`: ABC loops per L1 cluster
-- `peaks`: HDMA global acCREs
+- `peaks`: HDMA global caCREs
 - `hits`: all annotated motif instances called using ChromBPNet
 
 The BPCells object was produced by the script [`code/05-misc/01-bp_cells_create_obj.R`](https://github.com/GreenleafLab/HDMA/blob/main/code/05-misc/01-bp_cells_create_obj.R).

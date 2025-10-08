@@ -137,6 +137,12 @@ load(here::here("output/02-global_analysis/01/cell_meta_all.Rda"))
 
 ```
 
+Load sample metadata:
+```{r sample_metadata}
+
+sample_meta <- read_csv(here::here("output/01-preprocessing/02/shared/SampleMetadata.csv"))
+
+```
 
 
 # Cluster average expression
@@ -530,6 +536,21 @@ p7 <- cluster_meta2 %>%
   ggtitle("Organ") +
   ylab(NULL)
 
+meta_withbioid <- cell_meta_rna %>%
+  left_join(cluster_meta2 %>% dplyr::select(Cluster, Cluster_labelled), by = "Cluster") %>%
+  left_join(sample_meta %>% dplyr::select(Sample=SampleName, BioID))
+meta_withbioid$BioID <- as.factor(meta_withbioid$BioID)
+
+pal <- colorRampPalette(c("lightgray", "orange", "brown"))(23)
+
+p8 <- meta_withbioid %>% 
+  ggplot(aes(x = Cluster_labelled)) +
+  geom_bar(aes(fill = BioID), position = "fill") +
+  scale_fill_manual(values=pal) + 
+  theme_d() +
+  coord_flip() +
+  ggtitle("BioID")
+
 # we have orders of magnitudes different # of cells in some clusters,
 # so let's put these on a log10 scale
 p0 <- cluster_meta2 %>% 
@@ -542,8 +563,8 @@ p0 <- cluster_meta2 %>%
   ggtitle("# cells")
 
 
-plot_grid(p1, p2, p3, p4, p5, p6, p7, p0, nrow = 1,
-          rel_widths = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.3),
+plot_grid(p1, p8, p2, p3, p4, p5, p6, p7, p0, nrow = 1,
+          rel_widths = c(0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.2),
           align = "h", axis = "tb")
 
 

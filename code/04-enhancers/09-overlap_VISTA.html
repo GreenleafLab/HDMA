@@ -1691,7 +1691,7 @@ div.tocify {
 
 <h1 class="title toc-ignore">Overlap VISTA enhancer database with HDMA
 global peakset</h1>
-<h4 class="date">22 April, 2025</h4>
+<h4 class="date">07 October, 2025</h4>
 
 </div>
 
@@ -2307,9 +2307,9 @@ going to have higher HDMA ATAC signal than those not VISTA heart
 positive”</p>
 <p>P value = (how many times is the shuffled enrichment &gt; actual
 enrichment)</p>
-<div class="sourceCode" id="cb64"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>organ <span class="ot">&lt;-</span> <span class="st">&quot;Heart&quot;</span></span>
-<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a><span class="co"># df &lt;- df_lognorm_z_sub</span></span>
-<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> df_lognorm_sub</span>
+<div class="sourceCode" id="cb64"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb64-1"><a href="#cb64-1" aria-hidden="true" tabindex="-1"></a>organ <span class="ot">&lt;-</span> <span class="st">&quot;Eye&quot;</span></span>
+<span id="cb64-2"><a href="#cb64-2" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> df_lognorm_z_sub</span>
+<span id="cb64-3"><a href="#cb64-3" aria-hidden="true" tabindex="-1"></a><span class="co"># df &lt;- df_lognorm_sub</span></span>
 <span id="cb64-4"><a href="#cb64-4" aria-hidden="true" tabindex="-1"></a>mask_pos <span class="ot">&lt;-</span> <span class="fu">mcols</span>(peaks)[[<span class="fu">paste0</span>(<span class="st">&quot;vista_pos_&quot;</span>,organ)]] <span class="sc">==</span> <span class="st">&quot;pos&quot;</span></span>
 <span id="cb64-5"><a href="#cb64-5" aria-hidden="true" tabindex="-1"></a>n_pos <span class="ot">&lt;-</span> <span class="fu">sum</span>(mask_pos)</span>
 <span id="cb64-6"><a href="#cb64-6" aria-hidden="true" tabindex="-1"></a>mask_hdma_clust <span class="ot">&lt;-</span> all.annots.sorted<span class="sc">$</span>organ <span class="sc">==</span> organ</span>
@@ -2338,13 +2338,24 @@ enrichment)</p>
 <span id="cb64-29"><a href="#cb64-29" aria-hidden="true" tabindex="-1"></a><span class="fu">sum</span>(avg_signal_pos_shuffles <span class="sc">&gt;</span> avg_signal_pos) <span class="sc">/</span> n_shuffles</span>
 <span id="cb64-30"><a href="#cb64-30" aria-hidden="true" tabindex="-1"></a><span class="fu">exp</span>(enrichment)</span></code></pre></div>
 <div class="sourceCode" id="cb65"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb65-1"><a href="#cb65-1" aria-hidden="true" tabindex="-1"></a><span class="co"># also try wilcoxon rank sum test</span></span>
-<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> df[mask_hdma_clust,<span class="sc">!</span>mask_pos] <span class="sc">%&gt;%</span> unlist</span>
-<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> df[mask_hdma_clust,mask_pos] <span class="sc">%&gt;%</span> unlist</span>
-<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">wilcox.test</span>(x, y,</span>
-<span id="cb65-5"><a href="#cb65-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">alternative =</span> <span class="fu">c</span>(<span class="st">&quot;greater&quot;</span>),</span>
-<span id="cb65-6"><a href="#cb65-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">conf.int =</span> T, <span class="at">conf.level =</span> <span class="fl">0.95</span>)</span>
-<span id="cb65-7"><a href="#cb65-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(res)</span>
-<span id="cb65-8"><a href="#cb65-8" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(res<span class="sc">$</span>statistic<span class="sc">/</span>(<span class="fu">length</span>(x)<span class="sc">*</span><span class="fu">length</span>(y)))</span></code></pre></div>
+<span id="cb65-2"><a href="#cb65-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (organ <span class="cf">in</span> <span class="fu">c</span>(<span class="st">&quot;Brain&quot;</span>, <span class="st">&quot;Heart&quot;</span>, <span class="st">&quot;Eye&quot;</span>, <span class="st">&quot;Liver&quot;</span>, <span class="st">&quot;Skin&quot;</span>)){</span>
+<span id="cb65-3"><a href="#cb65-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="st">&quot;#####################&quot;</span>)</span>
+<span id="cb65-4"><a href="#cb65-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(organ)</span>
+<span id="cb65-5"><a href="#cb65-5" aria-hidden="true" tabindex="-1"></a>  df <span class="ot">&lt;-</span> df_lognorm_z_sub</span>
+<span id="cb65-6"><a href="#cb65-6" aria-hidden="true" tabindex="-1"></a>  <span class="co"># df &lt;- df_lognorm_sub</span></span>
+<span id="cb65-7"><a href="#cb65-7" aria-hidden="true" tabindex="-1"></a>  mask_pos <span class="ot">&lt;-</span> <span class="fu">mcols</span>(peaks)[[<span class="fu">paste0</span>(<span class="st">&quot;vista_pos_&quot;</span>,organ)]] <span class="sc">==</span> <span class="st">&quot;pos&quot;</span></span>
+<span id="cb65-8"><a href="#cb65-8" aria-hidden="true" tabindex="-1"></a>  n_pos <span class="ot">&lt;-</span> <span class="fu">sum</span>(mask_pos)</span>
+<span id="cb65-9"><a href="#cb65-9" aria-hidden="true" tabindex="-1"></a>  mask_hdma_clust <span class="ot">&lt;-</span> all.annots.sorted<span class="sc">$</span>organ <span class="sc">==</span> organ</span>
+<span id="cb65-10"><a href="#cb65-10" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb65-11"><a href="#cb65-11" aria-hidden="true" tabindex="-1"></a>  y <span class="ot">&lt;-</span> df[mask_hdma_clust,<span class="sc">!</span>mask_pos] <span class="sc">%&gt;%</span> unlist</span>
+<span id="cb65-12"><a href="#cb65-12" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> df[mask_hdma_clust,mask_pos] <span class="sc">%&gt;%</span> unlist</span>
+<span id="cb65-13"><a href="#cb65-13" aria-hidden="true" tabindex="-1"></a>  res <span class="ot">&lt;-</span> <span class="fu">wilcox.test</span>(x, y,</span>
+<span id="cb65-14"><a href="#cb65-14" aria-hidden="true" tabindex="-1"></a>              <span class="at">alternative =</span> <span class="fu">c</span>(<span class="st">&quot;greater&quot;</span>),</span>
+<span id="cb65-15"><a href="#cb65-15" aria-hidden="true" tabindex="-1"></a>              <span class="at">conf.int =</span> T, <span class="at">conf.level =</span> <span class="fl">0.95</span>)</span>
+<span id="cb65-16"><a href="#cb65-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res)</span>
+<span id="cb65-17"><a href="#cb65-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res<span class="sc">$</span>p.value)</span>
+<span id="cb65-18"><a href="#cb65-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res<span class="sc">$</span>statistic<span class="sc">/</span>(<span class="fu">length</span>(x)<span class="sc">*</span><span class="fu">length</span>(y)))</span>
+<span id="cb65-19"><a href="#cb65-19" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div>
 </div>
 <div id="rna-heatmap" class="section level2" number="4.8">
 <h2><span class="header-section-number">4.8</span> RNA heatmap</h2>
@@ -2632,13 +2643,24 @@ enrichment)</p>
 approach:
 c(“hs2007”,“mm99”,“hs2240”,“mm194”,“mm122”,“mm2143”,“mm69”,“mm21”,“mm291”,“mm296”,“mm101”,“mm78”,“hs2062”,“mm1668”,“mm18”,“mm257”,“hs502”,“mm244”,“mm1343”,“mm89”,“mm1211”,“mm1330”,“mm1326”)</p>
 <div class="sourceCode" id="cb83"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb83-1"><a href="#cb83-1" aria-hidden="true" tabindex="-1"></a><span class="co"># also try wilcoxon rank sum test</span></span>
-<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> df[mask_hdma_clust,<span class="sc">!</span>mask_pos] <span class="sc">%&gt;%</span> unlist</span>
-<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> df[mask_hdma_clust,mask_pos] <span class="sc">%&gt;%</span> unlist</span>
-<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a>res <span class="ot">&lt;-</span> <span class="fu">wilcox.test</span>(x, y,</span>
-<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a>            <span class="at">alternative =</span> <span class="fu">c</span>(<span class="st">&quot;greater&quot;</span>),</span>
-<span id="cb83-6"><a href="#cb83-6" aria-hidden="true" tabindex="-1"></a>            <span class="at">conf.int =</span> T, <span class="at">conf.level =</span> <span class="fl">0.95</span>)</span>
-<span id="cb83-7"><a href="#cb83-7" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(res)</span>
-<span id="cb83-8"><a href="#cb83-8" aria-hidden="true" tabindex="-1"></a><span class="fu">print</span>(res<span class="sc">$</span>statistic<span class="sc">/</span>(<span class="fu">length</span>(x)<span class="sc">*</span><span class="fu">length</span>(y)))</span></code></pre></div>
+<span id="cb83-2"><a href="#cb83-2" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> (organ <span class="cf">in</span> <span class="fu">c</span>(<span class="st">&quot;Brain&quot;</span>, <span class="st">&quot;Heart&quot;</span>, <span class="st">&quot;Eye&quot;</span>, <span class="st">&quot;Liver&quot;</span>, <span class="st">&quot;Skin&quot;</span>)){</span>
+<span id="cb83-3"><a href="#cb83-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(<span class="st">&quot;#####################&quot;</span>)</span>
+<span id="cb83-4"><a href="#cb83-4" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(organ)</span>
+<span id="cb83-5"><a href="#cb83-5" aria-hidden="true" tabindex="-1"></a>  df <span class="ot">&lt;-</span> mat</span>
+<span id="cb83-6"><a href="#cb83-6" aria-hidden="true" tabindex="-1"></a>  peaks_test <span class="ot">&lt;-</span> peaks_anno[peak_order][idx,]</span>
+<span id="cb83-7"><a href="#cb83-7" aria-hidden="true" tabindex="-1"></a>  mask_pos <span class="ot">&lt;-</span> <span class="fu">mcols</span>(peaks_test)[[<span class="fu">paste0</span>(<span class="st">&quot;vista_pos_&quot;</span>,organ)]] <span class="sc">==</span> <span class="st">&quot;pos&quot;</span></span>
+<span id="cb83-8"><a href="#cb83-8" aria-hidden="true" tabindex="-1"></a>  n_pos <span class="ot">&lt;-</span> <span class="fu">sum</span>(mask_pos)</span>
+<span id="cb83-9"><a href="#cb83-9" aria-hidden="true" tabindex="-1"></a>  mask_hdma_clust <span class="ot">&lt;-</span> all.annots.sorted<span class="sc">$</span>organ <span class="sc">==</span> organ</span>
+<span id="cb83-10"><a href="#cb83-10" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb83-11"><a href="#cb83-11" aria-hidden="true" tabindex="-1"></a>  y <span class="ot">&lt;-</span> df[mask_hdma_clust,<span class="sc">!</span>mask_pos] <span class="sc">%&gt;%</span> unlist</span>
+<span id="cb83-12"><a href="#cb83-12" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> df[mask_hdma_clust,mask_pos] <span class="sc">%&gt;%</span> unlist</span>
+<span id="cb83-13"><a href="#cb83-13" aria-hidden="true" tabindex="-1"></a>  res <span class="ot">&lt;-</span> <span class="fu">wilcox.test</span>(x, y,</span>
+<span id="cb83-14"><a href="#cb83-14" aria-hidden="true" tabindex="-1"></a>              <span class="at">alternative =</span> <span class="fu">c</span>(<span class="st">&quot;greater&quot;</span>),</span>
+<span id="cb83-15"><a href="#cb83-15" aria-hidden="true" tabindex="-1"></a>              <span class="at">conf.int =</span> T, <span class="at">conf.level =</span> <span class="fl">0.95</span>)</span>
+<span id="cb83-16"><a href="#cb83-16" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res)</span>
+<span id="cb83-17"><a href="#cb83-17" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res<span class="sc">$</span>p.value)</span>
+<span id="cb83-18"><a href="#cb83-18" aria-hidden="true" tabindex="-1"></a>  <span class="fu">print</span>(res<span class="sc">$</span>statistic<span class="sc">/</span>(<span class="fu">length</span>(x)<span class="sc">*</span><span class="fu">length</span>(y)))</span>
+<span id="cb83-19"><a href="#cb83-19" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div>
 <div id="plot-atac" class="section level2" number="5.1">
 <h2><span class="header-section-number">5.1</span> Plot ATAC</h2>
 <div class="sourceCode" id="cb84"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb84-1"><a href="#cb84-1" aria-hidden="true" tabindex="-1"></a>global_bp_obj <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(here<span class="sc">::</span><span class="fu">here</span>(<span class="st">&quot;output/05-misc/01/global_bp_obj.rds&quot;</span>))</span>

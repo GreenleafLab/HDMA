@@ -1,5 +1,5 @@
 ---
-title: "07 - Overlap ENCODE with HDMA acCREs"
+title: "07 - Overlap ENCODE with HDMA caCREs"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document: 

@@ -556,9 +556,9 @@ plot(ht_list[[4]])
 
 P value = (how many times is the shuffled enrichment > actual enrichment) 
 ```{r, eval=F}
-organ <- "Heart"
-# df <- df_lognorm_z_sub
-df <- df_lognorm_sub
+organ <- "Eye"
+df <- df_lognorm_z_sub
+# df <- df_lognorm_sub
 mask_pos <- mcols(peaks)[[paste0("vista_pos_",organ)]] == "pos"
 n_pos <- sum(mask_pos)
 mask_hdma_clust <- all.annots.sorted$organ == organ
@@ -590,13 +590,25 @@ exp(enrichment)
 
 ```{r, eval=F}
 # also try wilcoxon rank sum test
-y <- df[mask_hdma_clust,!mask_pos] %>% unlist
-x <- df[mask_hdma_clust,mask_pos] %>% unlist
-res <- wilcox.test(x, y,
-            alternative = c("greater"),
-            conf.int = T, conf.level = 0.95)
-print(res)
-print(res$statistic/(length(x)*length(y)))
+for (organ in c("Brain", "Heart", "Eye", "Liver", "Skin")){
+  print("#####################")
+  print(organ)
+  df <- df_lognorm_z_sub
+  # df <- df_lognorm_sub
+  mask_pos <- mcols(peaks)[[paste0("vista_pos_",organ)]] == "pos"
+  n_pos <- sum(mask_pos)
+  mask_hdma_clust <- all.annots.sorted$organ == organ
+  
+  y <- df[mask_hdma_clust,!mask_pos] %>% unlist
+  x <- df[mask_hdma_clust,mask_pos] %>% unlist
+  res <- wilcox.test(x, y,
+              alternative = c("greater"),
+              conf.int = T, conf.level = 0.95)
+  print(res)
+  print(res$p.value)
+  print(res$statistic/(length(x)*length(y)))
+}
+
 ```
 
 
@@ -896,13 +908,24 @@ c("hs2007","mm99","hs2240","mm194","mm122","mm2143","mm69","mm21","mm291","mm296
 
 ```{r, eval=F}
 # also try wilcoxon rank sum test
-y <- df[mask_hdma_clust,!mask_pos] %>% unlist
-x <- df[mask_hdma_clust,mask_pos] %>% unlist
-res <- wilcox.test(x, y,
-            alternative = c("greater"),
-            conf.int = T, conf.level = 0.95)
-print(res)
-print(res$statistic/(length(x)*length(y)))
+for (organ in c("Brain", "Heart", "Eye", "Liver", "Skin")){
+  print("#####################")
+  print(organ)
+  df <- mat
+  peaks_test <- peaks_anno[peak_order][idx,]
+  mask_pos <- mcols(peaks_test)[[paste0("vista_pos_",organ)]] == "pos"
+  n_pos <- sum(mask_pos)
+  mask_hdma_clust <- all.annots.sorted$organ == organ
+  
+  y <- df[mask_hdma_clust,!mask_pos] %>% unlist
+  x <- df[mask_hdma_clust,mask_pos] %>% unlist
+  res <- wilcox.test(x, y,
+              alternative = c("greater"),
+              conf.int = T, conf.level = 0.95)
+  print(res)
+  print(res$p.value)
+  print(res$statistic/(length(x)*length(y)))
+}
 ```
 
 ## Plot ATAC 

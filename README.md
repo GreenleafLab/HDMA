@@ -46,14 +46,14 @@ However, it is not a fully executable workflow.
     * `02` --> assembly of motif compendium/lexicon
     * `03` --> downstream analysis of ChromBPNet models and motif syntax/synergy
   * [`04-enhancers`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers)
-    * `01` --> export global accessible candidate cis-regulatory elements (acCREs)
+    * `01` --> export global chromatin-accessible cis-regulatory elements (caCREs)
     * `02` --> convert fragment files to tagalign for running Activity-By-Contact model (ABC)
     * `03` --> ABC workflow config files
-    * `04` --> acCREs co-accessibility analysis
-    * `05` --> acCREs peak-to-gene linkage analysis
-    * `06` --> acCREs ABC enhancer-to-promoter linkage analysis
-    * `07` --> overlap of HDMA acCREs with ENCODE v4 cCREs
-    * `08`, `09` --> overlap of HDMA acCREs with VISTA enhancers
+    * `04` --> caCREs co-accessibility analysis
+    * `05` --> caCREs peak-to-gene linkage analysis
+    * `06` --> caCREs ABC enhancer-to-promoter linkage analysis
+    * `07` --> overlap of HDMA caCREs with ENCODE v4 cCREs
+    * `08`, `09` --> overlap of HDMA caCREs with VISTA enhancers
   * [`05-misc`](https://github.com/GreenleafLab/HDMA/tree/main/code/05-misc)
     * `01` --> create global BPCells object
     * `02` --> examples for plotting tracks using BPCells
@@ -77,9 +77,9 @@ The links in the Analysis column lead to rendered HTMLs, where possible, and the
 | Fig 1b, Fig S2b,c | [Global QC and metadata](https://greenleaflab.github.io/HDMA/code/02-global_analysis/01-global_QC.html) | [`code/02-global_analysis/01-global_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/01-global_QC.Rmd) |
 | Fig 1c | [Dendrogram and dotplot](https://greenleaflab.github.io/HDMA/code/02-global_analysis/02-dendrogram.html) | [`code/02-global_analysis/02-dendrogram.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/02-dendrogram.Rmd) |
 | Fig 1c | [ChromVAR heatmap](https://greenleaflab.github.io/HDMA/code/02-global_analysis/03-dendrogram_chromvar.html) | [`code/02-global_analysis/03-dendrogram_chromvar.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/02-global_analysis/03-dendrogram_chromvar.Rmd) |
-| Fig 2a-e, Fig S2f | [ABC linking of acCREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/06-abc.html) | [`code/04-enhancers/06-abc.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/06-abc.Rmd) |
+| Fig 2a-e, Fig S2f | [ABC linking of caCREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/06-abc.html) | [`code/04-enhancers/06-abc.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/06-abc.Rmd) |
 | Fig 2f-g, Fig S3a, Fig S4k | [Analysis of VISTA-overlapping enhancers](https://greenleaflab.github.io/HDMA/code/04-enhancers/09-overlap_VISTA.html) | [`code/04-enhancers/09-overlap_VISTA.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/09-overlap_VISTA.Rmd) |
-| Fig S2d-e | [Overlap of acCREs with ENCODE CREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/07-overlap_ENCODE_cCREs.html) | [`code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd) |
+| Fig S2d-e | [Overlap of caCREs with ENCODE CREs](https://greenleaflab.github.io/HDMA/code/04-enhancers/07-overlap_ENCODE_cCREs.html) | [`code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/04-enhancers/07-overlap_ENCODE_cCREs.Rmd) |
 | Fig 3b, Fig 6a, Fig S5 | [Plotting tracks at select loci](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/02-plot_tracks.html) | [`code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/02-plot_tracks.Rmd) |
 | Fig 3c, Fig S4a,b,i,j | [ChromBPNet QC](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/01-train_models/03-model_QC.html) and [correlation plot](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/01-train_models/03b-plot_correlation.html) | [`code/03-chrombpnet/01-train_models/03-model_QC.Rmd`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03-model_QC.Rmd) and [`code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/01-train_models/03b-plot_correlation.ipynb) |
 | Fig 3d-e, Fig 6b,d, Fig S4d-f, Fig S5b | [Motif lexicon/compendium](https://greenleaflab.github.io/HDMA/code/03-chrombpnet/03-syntax/01-motif_compendium.html) | [`code/03-chrombpnet/03-syntax/01-motif_compendium`](https://github.com/GreenleafLab/HDMA/tree/main/code/03-chrombpnet/03-syntax/01-motif_compendium.Rmd) | 
@@ -95,7 +95,7 @@ The links in the Analysis column lead to rendered HTMLs, where possible, and the
 
 ## Data availability
 
-All data and analysis products (including fragment files, counts matrices, cell annotations, global acCRE annotations, ChromBPNet models, motif lexicon, motif instances, and genomic tracks) are deposited at [https://zenodo.org/communities/hdma](https://zenodo.org/communities/hdma). A list of all data types and the corresponding URL and DOI is provided in Table S14 of the manuscript.
+All data and analysis products (including fragment files, counts matrices, cell annotations, global caCRE annotations, ChromBPNet models, motif lexicon, motif instances, and genomic tracks) are deposited at [https://zenodo.org/communities/hdma](https://zenodo.org/communities/hdma). A list of all data types and the corresponding URL and DOI is provided in Table S14 of the manuscript.
 
 We provide a detailed description of the main data types deposited on Zenodo [here](https://greenleaflab.github.io/HDMA/DATA.html),
 along with a demonstration of how to programmatically download files of interest.
