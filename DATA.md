@@ -575,7 +575,8 @@ To match the motifs in the lexicon h5 object to their names, use column R, "merg
 
 ## Motif instances
 
-The genomic tracks of annotated predictive motif instances in peaks are provided for each cluster as a zipped file `motif_instances.gz` in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418)
+The genomic tracks of annotated predictive motif instances in peaks are provided for each cluster as a zipped file `motif_instances.gz` in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17427146.svg)](https://doi.org/10.5281/zenodo.17427146)
+
   
 For every cluster, there are two files.
 
