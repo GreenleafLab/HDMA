@@ -1257,6 +1257,13 @@ plot_motif_summary(base_broad,
 
 ```
 
+Write out the number of cell types represented for each motif:
+
+```{r}
+
+hits_all_anno %>% filter(category %in% c("base", "base_with_flank")) %>% group_by(annotation_broad) %>% count()
+
+```
 
 
 ## Homocomposites, representative motif per broad anno
@@ -1340,7 +1347,7 @@ plot_motif_summary(unresolved %>% mutate(annotation_broad = motif_name),
                    hit_dyad_dist %>% mutate(annotation_broad = motif_name),
                    order_by = "distToTSS",
                    plot_known_motifs = FALSE,
-                   rel_widths = c(3.5, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
+                   rel_widths = c(3.5, 0.6, 0.5, 1, 1, 1, 1, 1, 1, 1, 1),
                    top_n = 30)
 
 ```

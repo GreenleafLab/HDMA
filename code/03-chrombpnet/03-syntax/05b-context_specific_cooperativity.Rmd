@@ -97,7 +97,6 @@ ggplot2::theme_set(theme_BOR())
 # Load data
 
 
-
 ## Cluster metadata
 
 ```{r load_cluster_meta}
@@ -156,17 +155,13 @@ meanexp_scaled_decontx <- all_gex_decontx.mean %>%
   tibble::rownames_to_column(var = "cluster") %>%
   gather(TF, Expression, 2:ncol(.))
 
-# see without scaling?
-# meanexp_scaled_decontx <- all_gex_decontx.mean %>%
-#   gather(TF, Expression, 2:ncol(.))
-
 pct1_decontx <- all_gex_decontx.detection %>% 
   gather(TF, Pct1, 2:ncol(.))
 
 max(pct1_decontx$Pct1, na.rm = TRUE)
 
 bubbleplot_data_decontx <- left_join(meanexp_scaled_decontx, pct1_decontx, by = c("cluster", "TF")) %>%
-  # NOTE: filter to observations where a gene is detected in at least 1% of cells
+  # NOTE: here we filter to observations where a gene is detected in at least 1% of cells
   filter(Pct1 > 0) %>% 
   left_join(cluster_meta, by = c("cluster" = "Cluster")) %>% 
   filter(cluster %in% cluster_meta$Cluster) %>% 
@@ -182,13 +177,19 @@ Helper function:
 
 <details>
 
+For each motif and each cluster, the ISM has been run for 5 model folds and 100 
+background sequences. The mean of effects across sequences is computed per fold,
+and points are shown here.
+
 ```{r}
 
 cluster_meta_subset <- cluster_meta %>% dplyr::select(Cluster_ChromBPNet, L1_annot, organ)
 
 plot_motif_across_celltypes <- function(motif, filter_statement, tf_rel_width = 1, top_n = 40) {
   
+  # debugging:
   # motif <- "255|FOX_NR:HNF4A/HNF4G"
+  # motif <- "339|IKZF1_RUNX"
   
   comp_motif_name <- motif
   comp_motif_name_safe <- gsub("\\/|\\|", ".", comp_motif_name)
@@ -200,6 +201,10 @@ plot_motif_across_celltypes <- function(motif, filter_statement, tf_rel_width = 
   
   cluster_order <- agg_results %>% slice_max(order_by = effect_mean, n = 30) %>% pull(L1_annot) %>% rev()
   
+  agg_results_per_fold <- agg_results %>% 
+    dplyr::select(L1_annot, matches("effect_fold")) %>% 
+    pivot_longer(cols = matches("effect_fold"), names_to = "fold", values_to = "effect")
+  
   # fold changes
   p2 <- agg_results %>% 
     filter(L1_annot %in% cluster_order) %>% 
@@ -208,8 +213,7 @@ plot_motif_across_celltypes <- function(motif, filter_statement, tf_rel_width = 
            effect_upper = effect_mean + effect_sd) %>% 
     ggplot(aes(x = L1_annot, y = effect_mean)) +
     geom_bar(aes(fill = organ), stat = "identity") +
-    geom_errorbar(aes(ymin = effect_lower, ymax = effect_upper)) +
-    geom_hline(yintercept = log2(1.5), linetype = "dashed") +
+    geom_point(data = agg_results_per_fold %>% filter(L1_annot %in% cluster_order), aes(y = effect), shape = 21) +
     scale_fill_manual(values = cmap_organ) +
     guides(fill = guide_legend(ncol = 2)) +
     xlab(NULL) + ylab("Mean effect") +
@@ -220,13 +224,27 @@ plot_motif_across_celltypes <- function(motif, filter_statement, tf_rel_width = 
     ggtitle("effect (log counts)")
   
   # heatmap of profile predictions (difference between edited and background)
+  
+  # for debugging:
+  # agg_preds_diff %>% 
+  #   gather(position, value, 2:ncol(.)) %>%
+  #   dplyr::rename(cluster = index) %>% 
+  #   left_join(cluster_meta_subset, by = c("cluster" = "Cluster_ChromBPNet")) %>% 
+  #   filter(L1_annot %in% cluster_order) %>% 
+  #   mutate(L1_annot = factor(L1_annot, levels = cluster_order),
+  #          position = as.numeric(position)) %>%
+  #   dplyr::select(cluster, position, value) %>%
+  #   ggplot(aes(x = position, y = value)) +
+  #   geom_point(size = 0.2)
+  
   p1 <- agg_preds_diff %>% 
     gather(position, value, 2:ncol(.)) %>%
     dplyr::rename(cluster = index) %>% 
     left_join(cluster_meta_subset, by = c("cluster" = "Cluster_ChromBPNet")) %>% 
     filter(L1_annot %in% cluster_order) %>% 
     mutate(L1_annot = factor(L1_annot, levels = cluster_order),
-           position = as.numeric(position)) %>% 
+           position = as.numeric(position),
+           value = ifelse(value < 0, 0, value)) %>% 
     ggplot(aes(x = position, y = L1_annot)) +
     geom_tile(aes(fill = value)) +
     theme(legend.position = "bottom",
@@ -277,8 +295,6 @@ plot_motif_across_celltypes(motif = "255|FOX_NR:HNF4A/HNF4G",
                             tf_rel_width = 2)
 
 ```
-
-
 
 
 ## 339|IKZF1_RUNX

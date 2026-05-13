@@ -1,9 +1,9 @@
 # Author: Selin Jessa
 # Purpose: Given a pair of motifs predicted to have cooperativity, run the ISM
-# in every cell type to see if it's context specific.
+# in every cell type to see if it's context specific. Run on Kundaje lab cluster.
 # 
-# Run with:
-# $ python -u test_coop_across_celltypes.py --motif '446|SRF_TEAD'
+# Run on Kundaje lab cluster, on durga, in the tangermeme conda environment, with:
+# $ python -u 05a-test_coop_cell_type_specificity.py --aggregate --motif '255|FOX_NR:HNF4A/HNF4G'
 
 # SETUP ------------------------------------------------------------------------
 
@@ -23,7 +23,7 @@ from pyfaidx import Fasta
 import bpnetlite
 from bpnetlite import ChromBPNet
 from bpnetlite import BPNet
-from bpnetlite.bpnite import CountWrapper
+from bpnetlite.bpnet import CountWrapper
 from bpnetlite.attribute import deep_lift_shap
 
 import torch
@@ -34,7 +34,7 @@ from tangermeme.utils import random_one_hot
 from tangermeme.utils import one_hot_encode
 from tangermeme.utils import characters
 from tangermeme.utils import reverse_complement
-from tangermeme.tools.fimo import fimo
+# from tangermeme.tools.fimo import fimo
 from tangermeme.space import space
 
 from scipy.stats import wilcoxon
@@ -59,7 +59,6 @@ print(tangermeme.__version__)
 print(bpnetlite.__version__)
 print(np.__version__)
 
-# os.environ['CUDA_VISIBLE_DEVICES']='0'
 os.environ['CUDA_VISIBLE_DEVICES']='MIG-40f43250-998e-586a-ac37-d6520e92590f'
 
 torch.manual_seed(100)
@@ -82,7 +81,6 @@ from plotnine import (
 
 
 
-
 # GLOBAL VARS -------------------------------------------------------------------------
 
 with open("../../DURGA_DIRS.txt", 'r') as f:
@@ -95,7 +93,7 @@ with open("../../DURGA_DIRS.txt", 'r') as f:
 
 
 with open("../../AK_PROJ_DIR.txt", 'r') as f:
-    KUNDAJE_DIR = f.readline().strip()
+	KUNDAJE_DIR = f.readline().strip()
 
 
 INPUTLEN = 2114
@@ -124,6 +122,9 @@ CHAR_IGNORE = ['QWERYUIOPSDFHJKLZXVBNM']
 
 
 def test_gpu():
+	"""
+	Test if GPU is available
+	"""
 
 	torch.cuda.device_count()
 	dev = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -142,16 +143,17 @@ def parse_args():
 	parser = argparse.ArgumentParser()
 	
 	parser.add_argument("--motif", type=str, default=None, help="If present, only run the test for this motif.")
+	parser.add_argument("--cluster", type=str, default=None, help="If present, only run the test for this cluster.")
 	parser.add_argument("--downstream-only", action="store_true", default=False,
 						help="If True, only run the plotting and downstream routines; no marginalizations are performed. Ignores .done file.")
 	parser.add_argument("--overwrite", action="store_true", default=False,
 						help="If True, overwrite the previous computations. To simply rerun the downstream plotting/summary routines, use --downstream-only.")
+	parser.add_argument("--aggregate", action="store_true", default=False,
+						help="If True, aggregate the results across cell types.")
 	args = parser.parse_args()
 	print(args)
 
 	return args
-
-
 
 
 
@@ -204,11 +206,20 @@ def main(args):
 	logger.critical(f"Running with {comp_motif_name}")
 
 	# load list of cell types with models passing QC
-	clusters = pd.read_csv(os.path.join(PROJ_OUT, "01-models/qc/chrombpnet_models_keep2.tsv"), sep="\t", header=None)
+	clusters_df = pd.read_csv(os.path.join(PROJ_OUT, "01-models/qc/chrombpnet_models_keep2.tsv"), sep="\t", header=None)
+	all_clusters = clusters_df[0].tolist()
 
-	# get the first column as a list
-	clusters = clusters[0].tolist()
-	clusters
+	# get cell types
+	if args.cluster is None:
+
+		logger.critical(f"Running over all clusters...")		
+		clusters = all_clusters
+
+	elif args.cluster:
+
+		logger.critical(f"Running only for cluster {args.cluster}")
+		assert args.cluster in all_clusters, f"Cluster {args.cluster} not found in the list of clusters to test."
+		clusters = [args.cluster]
 
 	comp_motif_name_safe = comp_motif_name.replace("|", ".").replace("/", ".")
 	logger.critical(comp_motif_name_safe)
@@ -226,7 +237,7 @@ def main(args):
 		logger.critical(f"--- {cluster}: {comp_motif_name} ---")
 		path_done = os.path.join(out_dir, "." + cluster + "__done")
 
-		# setup --------------------------------------------------------------------
+		# SETUP --------------------------------------------------------------------
 		# get info for the experiment
 
 		try:
@@ -248,7 +259,6 @@ def main(args):
 				path_preds_pkl = os.path.join(out_dir, cluster + "__predictions.pkl")
 				path_results_df = os.path.join(out_dir, cluster + "__results.tsv")
 				path_config_df = os.path.join(out_dir, cluster + "__config.tsv")
-
 
 				logger.critical(f"{comp_motif_name}")
 
@@ -283,29 +293,25 @@ def main(args):
 					# load model with five folds
 
 					models = [
-						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(chrombpnet_dir, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_0/models/chrombpnet_nobias.h5"))),
-						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(chrombpnet_dir, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_1/models/chrombpnet_nobias.h5"))),
-						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(chrombpnet_dir, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_2/models/chrombpnet_nobias.h5"))),
-						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(chrombpnet_dir, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_3/models/chrombpnet_nobias.h5"))),
-						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(chrombpnet_dir, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_4/models/chrombpnet_nobias.h5")))
+						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(PROJ_IN, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_0/models/chrombpnet_nobias.h5"))),
+						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(PROJ_IN, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_1/models/chrombpnet_nobias.h5"))),
+						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(PROJ_IN, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_2/models/chrombpnet_nobias.h5"))),
+						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(PROJ_IN, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_3/models/chrombpnet_nobias.h5"))),
+						ChromBPNetWrapper(BPNet.from_chrombpnet(filename=os.path.join(PROJ_IN, f"01-models/models/bias_Heart_c0_thresh0.4/{cluster}/fold_4/models/chrombpnet_nobias.h5")))
 					]
 
 					logger.critical("\tLoading backgrounds...")
+
 					# load GC-matched background sequences
-					nonpeaks_bed = os.path.join(chrombpnet_dir, f"00-inputs/gc_matched_negatives/{cluster}/fold_0/output_negatives.bed")
+					# NOTE: loading background regions across the whole genome is one of the most time-intensive
+					# steps in the ISM pipeline. Therefore we randomly pre-select 100 regions and load those here,
+					# both for reproducibility and speed.
+					nonpeaks_bed = os.path.join(PROJ_IN, f"00-inputs/gc_matched_negatives_subset/{cluster}__output_negatives_rand100.bed")
 
 					X_nonpeaks = tangermeme.io.extract_loci(nonpeaks_bed, genome_fa, ignore = CHAR_IGNORE)
-					logger.critical(X_nonpeaks.shape)
-					logger.critical(X_nonpeaks[0])
-
-					# choose 100 random indices of the X_nonpeaks sequences
-					rand_indices = np.random.choice(X_nonpeaks.shape[0], 100, replace=False)
-					rand_indices
-
 					# ensure tensors are correctly typed and consistent before the function call
 					X_nonpeaks = X_nonpeaks.float()
-					X_nonpeaks_rand = X_nonpeaks[rand_indices].float()  # convert to float type
-					logger.critical(X_nonpeaks_rand.shape)
+					logger.critical(X_nonpeaks.shape)
 
 					# make a config dict
 					# write a DF with config info
@@ -314,8 +320,7 @@ def main(args):
 						"category": [comp_type],
 						"cluster": [cluster],
 						"seqA": [seqA],
-						"seqB": [seqB],
-						"rand_indices": [",".join(map(str, rand_indices))]
+						"seqB": [seqB]
 					})
 
 					config_df.transpose()
@@ -328,7 +333,6 @@ def main(args):
 
 				# ISM ----------------------------------------------------------------------
 
-				# Spacing -------------------------------------------------------------------
 				# check if the spacing predictions have already been computed
 				if not args.overwrite and os.path.exists(path_preds_pkl):
 
@@ -345,7 +349,7 @@ def main(args):
 					y_after_list = []
 
 					for model in models:
-						y_before, y_after = space(model, X_nonpeaks_rand, motifs, spacing=[[best_spacing]])
+						y_before, y_after = space(model, X_nonpeaks, motifs, spacing=[[best_spacing]])
 						y_before_list.append(y_before)
 						y_after_list.append(y_after)
 
@@ -364,6 +368,14 @@ def main(args):
 
 				# calculate the effect in ln(counts) units
 				y_effect = preds['y_after'][1] - preds['y_before'][1]
+
+				# save the result per fold as a dataframe
+				y_effect_mean_per_fold = tanutils.eval.mean_across_sequences(y_effect)
+				print(y_effect_mean_per_fold.shape)
+				y_effect_mean_per_fold_df = pd.DataFrame({
+					f"effect_fold_{i}": [y_effect_mean_per_fold[i].squeeze().numpy()] 
+					for i in range(y_effect_mean_per_fold.shape[0])
+				})
 
 				# calculate mean across sequences, then the mean/sd across folds
 				y_effect_mean, y_effect_sd = tanutils.eval.summarize_across_folds(tanutils.eval.mean_across_sequences(y_effect))
@@ -387,7 +399,11 @@ def main(args):
 					"effect_sd": y_effect_sd.squeeze().item()
 				})
 
-				results
+				# combine results
+				results = pd.concat([results, y_effect_mean_per_fold_df], axis=1)
+				
+				logger.critical("\tDisplaying result dataframes...")
+				print(results)
 
 				# save the outputs ---------------------------------------------------------
 
@@ -408,6 +424,12 @@ def main(args):
 			continue
 
 	logger.critical("Done predictions.")
+
+	if not args.aggregate:
+		logger.critical("Skipping aggregation. Done.")
+		return
+
+	# AGGREGATE ACROSS CELL TYPES ------------------------------------------------------
 	logger.critical("Aggregating results...")
 
 	preds_after = []
@@ -464,7 +486,6 @@ def main(args):
 	results.to_csv(os.path.join(out_dir, "aggregated_results.tsv"), sep="\t", index=False)
 				
 	logger.critical("Done.")
-
 
 
 if __name__ == '__main__':

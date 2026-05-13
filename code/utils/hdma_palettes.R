@@ -61,7 +61,7 @@ cmap_compartment <- c(end = "#7F3C8D", epi = "#11A579", str = "#3969AC", imm = "
 # more subtle colors
 cmap_compartment2 <- c("end" = "gray80", "imm" = "black", "str" = "gray40", "epi" = "gray60")
 
-cmap_class <-  c("pos_patterns" = "darkgreen", "neg_patterns" = "red")
+cmap_class <-  c("pos_patterns" = "darkred", "neg_patterns" = "dodgerblue4")
 
 
 cmap_category <- c("base"            = "firebrick1",
