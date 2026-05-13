@@ -539,7 +539,8 @@ modisco_obj['neg_patterns']
 # <HDF5 group "/neg_patterns" (3 members)>
 ```
 
-The `merged_modisco_patterns_map.tsv` can be used to match per-cell type motifs to their motif cluster in the lexicon:
+The `merged_modisco_patterns_map.tsv` can be used to match per-cell type motifs to their motif cluster in the lexicon.
+The column "merged_pattern"" matches the equivalent column in Table S6.
 
 ```bash
 head merged_modisco_patterns_map.tsv
@@ -560,16 +561,55 @@ neg.Average_12__merged_pattern_0	Heart_c2	neg_patterns	pattern_0	93	Heart_c2__ne
 To generate the motif lexicon (also referred to as motif compendium in the code base), the 6,362 motifs discovered in each of the 189 cell types (using TF-MoDISco) were aggregated together and subjected to QC. This resulted in a total of 508 motifs.
 
 Table S6 contains a summary table of the motif lexicon, one row per motif, along with its granular and broad annotations.
-The motifs can be explored interactively along with summary stats across tisuses and best matches to know motifs here: [https://greenleaflab.github.io/HDMA/MOTIFS.html](https://greenleaflab.github.io/HDMA/MOTIFS.html)
+The motifs can be explored interactively along with summary stats across tisuses and best matches to known motifs here: [https://greenleaflab.github.io/HDMA/MOTIFS.html](https://greenleaflab.github.io/HDMA/MOTIFS.html)
 
 We provide the following resources for the motif lexicon in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200418.svg)](https://doi.org/10.5281/zenodo.15200418):
 
 - h5 file in the TF-MoDISco format containing motif CWMs as matrices (`motif_compendium.modisco_object.h5`)
 - PPMs in MEME format: `motif_compendium.PPM.memedb.txt`
 - PPMs of trimmed motifs in MEME format: `motif_compendium.trimmed.PPM.memedb.txt`
-- PNG images of forward and reverse-complemented CWM logos: `denovo_motifs_508_cwm_images.gz`
+- PNG images of forward and reverse-complemented CWM logos: `denovo_motifs_508_cwm_images.tar.gz`
 
 To match the motifs in the lexicon h5 object to their names, use column R, "merged_pattern", in Table S6, which corresponds to the keys in the object.
+
+For example, to extract a CWM for a specific motif from the MoDISco h5 object:
+
+```python
+# 1. Load the h5 object
+modisco_h5_path = "modisco_compiled_filtered.h5"
+modisco_obj = h5py.File(modisco_h5_path)
+modisco_obj.keys()
+# <KeysViewHDF5 ['neg_patterns', 'pos_patterns']>
+len(modisco_obj['pos_patterns'])
+len(modisco_obj['neg_patterns'])
+# 722
+# 20
+
+# 2. Load Table S6
+sup_table_6 = pd.read_csv("sup_table_6.tsv")
+
+# helper function to get the pattern given the motif name
+def get_pattern_name(motif_name):
+	"""
+	Get the MoDISco pattern name '<pattern_class>.pattern_<X>', given the motif name
+	"""
+	return sup_table_6[sup_table_6["motif_name"] == motif_name]['merged_pattern'].values[0]
+
+# 3. Choose a motif of interest
+motif = "0|AP-2"
+pattern = get_pattern_name(motif)
+pattern
+# 'pos.Average_272__merged_pattern_1'
+
+# 4. Extract the data in the object for that pattern
+modisco_obj['pos_patterns'][pattern].keys()
+# <KeysViewHDF5 ['contrib_scores', 'hypothetical_contribs', 'seqlets', 'sequence']>
+
+# 5. Get the CWM
+cwm = modisco_obj_filt['pos_patterns'][pattern]['contrib_scores'][()]
+print(cwm.shape)
+# (30, 4)
+```
 
 
 
@@ -578,9 +618,9 @@ To match the motifs in the lexicon h5 object to their names, use column R, "merg
 The genomic tracks of annotated predictive motif instances in peaks are provided for each cluster as a zipped file `motif_instances.gz` in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17427146.svg)](https://doi.org/10.5281/zenodo.17427146)
 
   
-For every cluster, there are two files.
+For every cluster, there are three files.
 
-A BED file: `<cluster>__instances.bed.gz>`, with the columns `chr`, `start`, `end`, `motif_name`, `hit_score`, `strand`, `pattern_class`:
+1. A BED file: `<cluster>__instances.bed.gz>`, with the columns `chr`, `start`, `end`, `motif_name`, `hit_score`, `strand`, `pattern_class`:
 
 ```bash
 $ zcat Adrenal_c0__instances.bed.gz | head
@@ -596,8 +636,9 @@ chr1	181296	181306	400|NRF1	934.34006	-	pos_patterns
 chr1	181325	181335	400|NRF1	930.62365	-	pos_patterns
 ```
 
+2. A tabix index for the BED file: `<cluster>__instances.bed.gz.tbi`.
 
-A TSV file: `<cluster>__instances.annotated.tsv.gz`, with a more extended set of information (including hit scores and genomic annotaitons) per motif instance:
+3. A TSV file: `<cluster>__instances.annotated.tsv.gz`, with a more extended set of information (including hit scores and genomic annotaitons) per motif instance:
 
 ```bash
 $ zcat Adrenal_c0__instances.annotated.tsv.gz | head
