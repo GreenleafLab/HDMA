@@ -74,7 +74,7 @@ model predictions on motifs for TFs that are not expressed to be co-expressed.
 
 # Set up
 
-```{r libs, echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE}
+```{r libs, warning = FALSE, message = FALSE, echo = TRUE, cache = FALSE}
 
 library(dplyr)
 library(tidyr)
@@ -169,9 +169,6 @@ glue("{sum(compo_to_test$done)/nrow(compo_to_test)*100}%")
 
 compo_to_test <- compo_to_test %>%
   dplyr::rename(seqA = test_seqA, seqB = test_seqB)
-
-orientations_hetero <- c("A,B HT", "B,A HT", "HH", "TT")
-orientations_homo <- c("HH", "HT", "TT")
 
 ```
 
@@ -295,8 +292,8 @@ Outputs of the *in silico* marginalization experiments:
 ```{r results_all_tests}
 
 result_outs_allexp <- map2_dfr(all_tests2$motif_name_safe, all_tests2$cluster,
-                               ~ data.table::fread(file.path(ism_dir_all, .x, .y, "results.tsv"), data.table = FALSE)
-                               %>% mutate(cluster = .y)) %>% 
+                            ~ data.table::fread(file.path(ism_dir_all, .x, .y, "results.tsv"), data.table = FALSE)
+                            %>% mutate(cluster = .y)) %>% 
   left_join(compo_to_test %>% dplyr::select(motif_name, category), by = "motif_name") %>% 
   dplyr::select(-seqA_palindrome, -seqB_palindrome)
 
@@ -309,9 +306,9 @@ Outputs of the solo tests:
 ```{r load_solo2, message = FALSE}
 
 solo_df_allexp <- pmap_dfr(list(all_tests2$motif_name_safe, all_tests2$cluster, all_tests2$motif_name),
-                           ~ data.table::fread(file.path(ism_dir_all, ..1, ..2, "summarized_effects_solo.tsv"),
-                                               data.table = FALSE) %>% 
-                             mutate(motif_name = ..3, cluster = ..2))
+                    ~ data.table::fread(file.path(ism_dir_all, ..1, ..2, "summarized_effects_solo.tsv"),
+                                        data.table = FALSE) %>% 
+                      mutate(motif_name = ..3, cluster = ..2))
 
 head(solo_df_allexp)
 
@@ -1100,8 +1097,6 @@ tibble::tribble(
 
 ```{r distribution_mean_normed_rank, fig.width = 15, fig.height = 5}
 
-table(motifs_ranked_mean$result)
-
 p1 <- motifs_ranked_mean %>% 
   ggplot(aes(x = result, y = mean_norm_rank)) +
   geom_boxplot(aes(fill = result), outliers = FALSE, fill = "white") +
@@ -1685,7 +1680,7 @@ plot_curves("423|RFX_SOX",          limits = c(0, 0.6), facet = FALSE, best_orie
 
 ## Composite motif 47 (Coordinator)
 
-```{r 47_profiles}
+```{r coord_profiles}
 
 pred_profiles_47 <- data.table::fread(
   file.path(ism_dir, "47|BHLH:TWIST.ZBTB_HD/Skin_c0/profile_preds_A,B HT.tsv"),
@@ -1702,23 +1697,18 @@ pred_profiles_47 %>%
 
 ```
 
-```{r 47_spacing, fig.width = 7, fig.height = 6}
-
-effects_47 <- map_dfr(orientations_hetero, ~ data.table::fread(
-  file.path(ism_dir, glue("47|BHLH:TWIST.ZBTB_HD/Skin_c0/count_effects_per_fold_{.x}.tsv")),
-  data.table = FALSE) %>% 
-    mutate(orientation = .x))
+```{r coord_spacing, fig.width = 7, fig.height = 6}
 
 spacing_df %>% 
   filter(motif_name == "47|BHLH:TWIST/ZBTB_HD") %>% 
   filter(spacing <= 20) %>% 
   ggplot(aes(x = spacing, y = effect_mean)) +
   geom_bar(stat = "identity", color = "black", fill = "red") +
-  # geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
-  geom_point(data = effects_47, aes(y = effect), shape = 21) +
+  geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
   facet_wrap(~ orientation, ncol = 2)
 
 ```
+
 
 
 ## Composite motif 74
@@ -1740,21 +1730,14 @@ pred_profiles_74 %>%
 
 ```
 
-
 ```{r 74_spacing, fig.width = 7, fig.height = 6}
-
-effects_74 <- map_dfr(orientations_hetero, ~ data.table::fread(
-  file.path(ism_dir, glue("74|BHLH_HD:PBX1.PDX1/Muscle_c0/count_effects_per_fold_{.x}.tsv")),
-  data.table = FALSE) %>% 
-    mutate(orientation = .x))
 
 spacing_df %>% 
   filter(motif_name == "74|BHLH_HD:PBX1/PDX1") %>% 
   filter(spacing <= 20) %>% 
   ggplot(aes(x = spacing, y = effect_mean)) +
   geom_bar(stat = "identity", color = "black", fill = "red") +
-  # geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
-  geom_point(data = effects_74, aes(y = effect), shape = 21) +
+  geom_errorbar(aes(ymin = effect_mean - effect_sd, ymax = effect_mean + effect_sd), width = 0.5) +
   facet_wrap(~ orientation, ncol = 2)
 
 ```

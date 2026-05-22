@@ -32,7 +32,6 @@ code/03-chrombpnet/03-syntax/scratch/
 code/05-misc/scratch/
 
 # plots
-*.pdf
 */Rplots.pdf
 code/*/Rplots.pdf
 code/logs
@@ -40,7 +39,6 @@ code/logs
 # outs
 output
 motifs
-.motifs_old/
 
 # ipynb
 .ipynb_checkpoints

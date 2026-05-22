@@ -586,26 +586,6 @@ plot_motif_summary <- function(motifs_filt,
           legend.position = "bottom") +
     xlim(c(0, 25))
   
-  # plot the number of cell types represented in this annotation
-  pN <- hits_annotated %>%
-    filter(annotation_broad %in% motif_order) %>% 
-    distinct(annotation_broad, Cluster) %>% 
-    mutate(annotation_broad = factor(annotation_broad, levels = rev(motif_order))) %>%
-    group_by(annotation_broad) %>%
-    count() %>%
-    mutate(n_str = glue("({n})")) %>% 
-    ggplot(aes(y = annotation_broad, x = "1")) +
-    # color scale is on log10
-    geom_tile(fill = "white", alpha = 1) +
-    # labels are non log-transformed
-    geom_text(aes(label = n_str), color = "black", size = 3) +
-    ylab(NULL) + xlab(NULL) + ggtitle("# cell \ntypes") +
-    rotate_x() +
-    hide_ticks() +
-    theme(panel.grid = element_blank(),
-          panel.border = element_blank(),
-          legend.position = "bottom")
-  
   # plot breakdown of total hits based on cell type compartment
   p5 <- hits_annotated %>%
     filter(annotation_broad %in% motif_order) %>% 
@@ -737,7 +717,7 @@ plot_motif_summary <- function(motifs_filt,
     ggplot(aes(x = 1, y = annotation_broad)) +
     geom_tile(aes(fill = class_short), alpha = 0.1) +
     geom_text(aes(label = class_short, color = class_short), fontface = "bold", size = 8) +
-    scale_fill_manual(values = c("+" = "darkred", "-" = "dodgerblue4"), aesthetics = c("color", "fill")) +
+    scale_fill_manual(values = c("+" = "darkgreen", "-" = "darkred"), aesthetics = c("color", "fill")) +
     ggtitle("class") +
     no_legend() +
     ylab(NULL) +
@@ -749,8 +729,8 @@ plot_motif_summary <- function(motifs_filt,
   
   if (is.null(rel_widths)) {
     
-    if (plot_known_motifs) rel_widths = c(2.5, 2, 0.6, 0.5, 1, 1, 1, 1, 1, 1, 1, 1)
-    else if (!plot_known_motifs) rel_widths = c(3, 0.6, 0.5, 1, 1, 1, 1, 1, 1, 1, 1)
+    if (plot_known_motifs) rel_widths = c(2.5, 2, 0.5, 1, 1, 1, 1, 1, 1, 1, 1)
+    else if (!plot_known_motifs) rel_widths = c(3, 0.5, 1, 1, 1, 1, 1, 1, 1, 1)
     
   }
   
@@ -781,11 +761,11 @@ plot_motif_summary <- function(motifs_filt,
     # make the logos
     p2 <- stack_logo(known_motifs_subset, method = "bits", title = "Known PWM")
     
-    plot_grid(p1, p2, pN, p11, p3, p7, p8, p9, p10, p5, p6, p4, nrow = 1, align = "h", axis = "tb", rel_widths = rel_widths)
+    plot_grid(p1, p2, p11, p3, p7, p8, p9, p10, p5, p6, p4, nrow = 1, align = "h", axis = "tb", rel_widths = rel_widths)
     
   } else {
     
-    plot_grid(p1, pN, p11, p3, p7, p8, p9, p10, p5, p6, p4, nrow = 1, align = "h", axis = "tb", rel_widths = rel_widths)
+    plot_grid(p1, p11, p3, p7, p8, p9, p10, p5, p6, p4, nrow = 1, align = "h", axis = "tb", rel_widths = rel_widths)
     
   }
   

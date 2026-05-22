@@ -1,9 +1,6 @@
-# Helper script to extract predictions for a given composite motif
-# Option 1: extract profile predictions
+# Helper script to extract profile predictions for a given composite motif
 # at some specific orientation, for the first 10 spacings, summarized across all 100 sequences
 # and 5 folds, and save to a TSV for plotting in R.
-# Option 2: extract effects (log fold changes in counts), for the first 20 spacings,
-# summarized across all 100 sequences but per fold, and save to a TSV for plotting in R.
 
 import sys
 import os
@@ -18,7 +15,6 @@ from tangermeme_utils.eval import summarize_across_folds, mean_across_sequences
 
 # set up argparsing
 parser = argparse.ArgumentParser(description='Extract predicted profiles to TSV')
-parser.add_argument('--mode', type=str, help='Mode: profile or counts')
 parser.add_argument('--motif', type=str, help='Motif name')
 parser.add_argument('--orientation', type=str, help='Orientation to extract')
 args = parser.parse_args()
@@ -40,68 +36,31 @@ pkl_path = os.path.join(out_path, "predictions.pkl")
 with open(pkl_path, 'rb') as f:
 	spacing_preds = pickle.load(f)
 
-if args.mode == "profile":
+# extract the orientation
+subsetted_preds = spacing_preds[args.orientation]['y_after'][0][:, :, 0:10, :, :]
+print(subsetted_preds.shape)
+print(type(subsetted_preds))
+profile_mean, profile_sd = summarize_across_folds(mean_across_sequences(subsetted_preds))
 
-	# extract the data at specific spacings
-	subsetted_preds = spacing_preds[args.orientation]['y_after'][0][:, :, 0:10, :, :]
-	print(subsetted_preds.shape)
-	print(type(subsetted_preds))
+spacing_list = []
+position_list = []
+mean_list = []
+sd_list = []
 
-	profile_mean, profile_sd = summarize_across_folds(mean_across_sequences(subsetted_preds))
+for spacing_idx in range(profile_mean.shape[0]):
+	for position_idx in range(profile_mean.shape[2]):
+		spacing_list.append(spacing_idx)
+		position_list.append(position_idx)
+		mean_list.append(profile_mean[spacing_idx, 0, position_idx].item())
+		sd_list.append(profile_sd[spacing_idx, 0, position_idx].item())
 
-	spacing_list = []
-	position_list = []
-	mean_list = []
-	sd_list = []
+# make a df
+data = {
+	"spacing": spacing_list,
+	"position": position_list,
+	"mean": mean_list,
+	"sd": sd_list,
+}
 
-	for spacing_idx in range(profile_mean.shape[0]):
-		for position_idx in range(profile_mean.shape[2]):
-			spacing_list.append(spacing_idx)
-			position_list.append(position_idx)
-			mean_list.append(profile_mean[spacing_idx, 0, position_idx].item())
-			sd_list.append(profile_sd[spacing_idx, 0, position_idx].item())
-
-	# make a df
-	data = {
-		"spacing": spacing_list,
-		"position": position_list,
-		"mean": mean_list,
-		"sd": sd_list,
-	}
-
-	df = pd.DataFrame(data)
-	df.to_csv(os.path.join(out_path, f"profile_preds_{args.orientation}.tsv"), sep="\t", index=False)
-
-elif args.mode == "counts":
-
-	# extract the data
-	y_effects = preds[orientation]['y_after'][1] - preds[orientation]['y_before'][1]
-
-	# subset to first 20 spacings
-	y_effects = y_effects[:, :, 0:20, :]
-
-	# summarize across sequences, but keep folds separate
-	y_effects_per_fold = mean_across_sequences(y_effects).squeeze()
-	# expected: (5, 20)
-	print(y_effects_per_fold.shape)
-
-	# convert to dataframe
-	spacing_list = []
-	fold_list = []
-	effect_list = []
-
-	for fold_idx in range(y_effects_per_fold.shape[0]):
-		for spacing_idx in range(y_effects_per_fold.shape[1]):
-			spacing_list.append(spacing_idx)
-			fold_list.append(fold_idx)
-			effect_list.append(y_effects_per_fold[fold_idx, spacing_idx].item())
-	
-	# make a df
-	data = {
-		"spacing": spacing_list,
-		"fold": fold_list,
-		"effect": effect_list,
-	}
-
-	df = pd.DataFrame(data)
-	df.to_csv(os.path.join(out_path, f"count_effects_per_fold_{args.orientation}.tsv"), sep="\t", index=False)
+df = pd.DataFrame(data)
+df.to_csv(os.path.join(out_path, f"profile_preds_{args.orientation}.tsv"), sep="\t", index=False)
