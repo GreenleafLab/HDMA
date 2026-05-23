@@ -29,7 +29,7 @@ Contents:
 - [Motif lexicon and motifs per cell type](https://greenleaflab.github.io/HDMA/DATA.html#motif-lexicon-and-motifs-per-cell-type)
 - [Motif instances](https://greenleaflab.github.io/HDMA/DATA.html#motif-instances)
 - [Genomic tracks on the WashU Genome Browser](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser)
-- Processing raw anonymized data from SRA
+- [Processing raw anonymized data from SRA](https://greenleaflab.github.io/HDMA/DATA.html#processing-raw-anonymized-data-from-sra)
 
 
 ## Downloading data from Zenodo
@@ -654,25 +654,25 @@ For each cluster, the following tracks are available:
 
 HDMA anonymized raw data has been deposited to SRA under [PRJNA1402391](https://www.ncbi.nlm.nih.gov/bioproject/1402391)
 in **anonymized** form: cell, sublibrary,
-and sample barcodes are preserved, but the genomic reads were re-generated from
-variant-masked BAMs (using BAMboozle) to protect donor identity. These
+and sample barcodes are preserved, but the read sequences were replaced with the corresponding reference genomic sequence
+ (using BAMboozle). These
 anonymized FASTQs can be processed back into per-sample fragment files and
 count matrices using a dedicated branch of the SHARE-seq pipeline.
 
 ### Pipeline overview
 
-We provide the `process-anonymize` branch of
-[`GreenleafLab/shareseq-pipeline`](https://github.com/GreenleafLab/shareseq-pipeline/tree/process-anonymize),
-which chains three Snakemake workflows (see the branch
+We have drafted some adaptations to our original SHARE-seq processing pipeline on the `process-anonymize` branch of
+the [`GreenleafLab/shareseq-pipeline`](https://github.com/GreenleafLab/shareseq-pipeline/tree/process-anonymize) repo.
+This chains three Snakemake workflows (see the branch
 [README](https://github.com/GreenleafLab/shareseq-pipeline/blob/process-anonymize/README.md)
 and example config
 [`runs/share_sra_demo.yaml`](https://github.com/GreenleafLab/shareseq-pipeline/blob/process-anonymize/runs/share_sra_demo.yaml)):
 
-1. **`prep_sra.smk`** — downloads fastqs for each declared SRR into
+1. **`prep_sra.smk`** — downloads fastqs for each SRR declared in the run config into
    `data_dir`, reconstructing the expected read header `@<read> 1:N:0:<I1>+<I2>` expected
    by our SHARE-seq pipeline. Outputs are named `{ATAC|RNA}_{SampleID}_anon_{R1|R2}.fastq.gz`.
-   Skipped automatically when no SRRs are declared (i.e. FASTQs already on disk)
-   if you downloaded them separately.
+   Skipped automatically when no SRRs are declared (i.e. FASTQs already at the expected
+   paths if you downloaded them separately).
 2. **`ingest_anonymized.smk`** — splits each per-sample anonymized FASTQ back into
    per-sublibrary files (`.fastq.zst`) by matching read 2's I2 index against the
    sublibrary→I2 map with 1 bp mismatch tolerance (mirroring `bcl2fastq`), then
@@ -702,7 +702,7 @@ To configure a run (`runs/<batch>.yaml`), you need:
 
 ### Demultiplexing parameter tables
 
-The Round1 BC1 regex and CL→I2 index mappings for every batch in HDMA are
+The Round1 BC1 and CL→I2 index mappings for every batch in HDMA are
 provided as two TSVs under
 [`code/01-preprocessing/01-snakemake/`](code/01-preprocessing/01-snakemake/),
 alongside the original per-batch Snakemake configs they were derived from
@@ -717,10 +717,7 @@ alongside the original per-batch Snakemake configs they were derived from
 - [`sublibrary_indices.tsv`](code/01-preprocessing/01-snakemake/sublibrary_indices.tsv)
   — one row per (organ, sequencing run, modality, sublibrary), columns:
   `Organ`, `Modality` (ATAC/RNA), `Index`
-  (always `I2`), `Sublibrary` (`CL{N}`), `IndexSequence` (8 bp). For the
-  SRA reprocessing path, only the `(Sublibrary, Modality, IndexSequence)`
-  triple is needed — collapse duplicate rows arising from the same CL being
-  sequenced across multiple flow cells. Use to populate the
+  (always `I2`), `Sublibrary` (`CL{N}`), `IndexSequence` (8 bp). Use to populate the
   `sublibraries: {ATAC: {...}, RNA: {...}}` block of the run config.
 
 **Note on the `Organ` column.** `Organ` groups entries by the processing batch,
