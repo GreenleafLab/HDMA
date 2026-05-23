@@ -29,6 +29,7 @@ Contents:
 - [Motif lexicon and motifs per cell type](https://greenleaflab.github.io/HDMA/DATA.html#motif-lexicon-and-motifs-per-cell-type)
 - [Motif instances](https://greenleaflab.github.io/HDMA/DATA.html#motif-instances)
 - [Genomic tracks on the WashU Genome Browser](https://greenleaflab.github.io/HDMA/DATA.html#genomic-tracks-on-the-washu-genome-browser)
+- Processing raw anonymized data from SRA
 
 
 ## Downloading data from Zenodo
@@ -576,15 +577,8 @@ To match the motifs in the lexicon h5 object to their names, use column R, "merg
 ## Motif instances
 
 The genomic tracks of annotated predictive motif instances in peaks are provided for each cluster as a zipped file `motif_instances.gz` in the Zenodo depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.17427146.svg)](https://doi.org/10.5281/zenodo.17427146)
-<<<<<<< HEAD
-
   
 For every cluster, there are three files.
-=======
->>>>>>> 52a1f35 (Updates)
-
-  
-For every cluster, there are two files.
 
 A BED file: `<cluster>__instances.bed.gz>`, with the columns `chr`, `start`, `end`, `motif_name`, `hit_score`, `strand`, `pattern_class`:
 
@@ -601,7 +595,6 @@ chr1	181267	181277	400|NRF1	944.7280999999999	-	pos_patterns
 chr1	181296	181306	400|NRF1	934.34006	-	pos_patterns
 chr1	181325	181335	400|NRF1	930.62365	-	pos_patterns
 ```
-
 
 A TSV file: `<cluster>__instances.annotated.tsv.gz`, with a more extended set of information (including hit scores and genomic annotaitons) per motif instance:
 
@@ -656,3 +649,84 @@ For each cluster, the following tracks are available:
 - `hits_unified`: BED files of annotated predictive motif instances identified using ChromBPNet modelling and Fi-NeMo
 - `abc_loops`: ABC-loops in [`longrange` format](https://epigenomegateway.readthedocs.io/en/latest/tracks.html#longrange)
 
+
+## Processing raw anonymized data from SRA
+
+HDMA anonymized raw data has been deposited to SRA under [PRJNA1402391](https://www.ncbi.nlm.nih.gov/bioproject/1402391)
+in **anonymized** form: cell, sublibrary,
+and sample barcodes are preserved, but the genomic reads were re-generated from
+variant-masked BAMs (using BAMboozle) to protect donor identity. These
+anonymized FASTQs can be processed back into per-sample fragment files and
+count matrices using a dedicated branch of the SHARE-seq pipeline.
+
+### Pipeline overview
+
+We provide the `process-anonymize` branch of
+[`GreenleafLab/shareseq-pipeline`](https://github.com/GreenleafLab/shareseq-pipeline/tree/process-anonymize),
+which chains three Snakemake workflows (see the branch
+[README](https://github.com/GreenleafLab/shareseq-pipeline/blob/process-anonymize/README.md)
+and example config
+[`runs/share_sra_demo.yaml`](https://github.com/GreenleafLab/shareseq-pipeline/blob/process-anonymize/runs/share_sra_demo.yaml)):
+
+1. **`prep_sra.smk`** — downloads fastqs for each declared SRR into
+   `data_dir`, reconstructing the expected read header `@<read> 1:N:0:<I1>+<I2>` expected
+   by our SHARE-seq pipeline. Outputs are named `{ATAC|RNA}_{SampleID}_anon_{R1|R2}.fastq.gz`.
+   Skipped automatically when no SRRs are declared (i.e. FASTQs already on disk)
+   if you downloaded them separately.
+2. **`ingest_anonymized.smk`** — splits each per-sample anonymized FASTQ back into
+   per-sublibrary files (`.fastq.zst`) by matching read 2's I2 index against the
+   sublibrary→I2 map with 1 bp mismatch tolerance (mirroring `bcl2fastq`), then
+   counts reads.
+3. **`shareseq.smk`** — standard SHARE-seq processing: matches the Round1+2+3
+   cell barcode, assigns each cell to a sample using the BC1 regex, aligns
+   with bowtie2 (ATAC) / STAR (RNA), and writes per-sample outputs.
+
+Expected outputs (under `output_dir`): `ATAC/samples/<sample>.fragments.tsv.gz`,
+`RNA/samples/<sample>.{matrix.mtx,barcodes.tsv,features.tsv}.gz`, and QC JSONs
+under `{ATAC,RNA}/samples/`. The cell barcode names
+(`CL{N}_BC1+BC2+BC3`) match the published Seurat / ArchR objects other cell metadata
+provided with the publication, so cells can be joined directly back to the published
+metadata by cell barcode string.
+
+### Required inputs per batch
+
+To configure a run (`runs/<batch>.yaml`), you need:
+
+- **Genome references** — bowtie2 + STAR indexes, GENCODE GTF, hg38 FASTA.
+  Consult `scripts/references/prep_genome.sh hg38`.
+- **SRR accessions** per sample, per assay — for `prep_sra.smk` to fetch the
+  anonymized FASTQs. See the SRA deposition [PRJNA1402391](https://www.ncbi.nlm.nih.gov/bioproject/1402391).
+- **Sample → Round1 BC1 regex** and **sublibrary (CL) → I2 index map** — the
+  same demultiplexing parameters used when the data was originally generated.
+  These are provided in this repo (see below).
+
+### Demultiplexing parameter tables
+
+The Round1 BC1 regex and CL→I2 index mappings for every batch in HDMA are
+provided as two TSVs under
+[`code/01-preprocessing/01-snakemake/`](code/01-preprocessing/01-snakemake/),
+alongside the original per-batch Snakemake configs they were derived from
+(`b{N}_<organ>.yaml`):
+
+- [`sample_barcodes.tsv`](code/01-preprocessing/01-snakemake/sample_barcodes.tsv)
+  — one row per (organ, sample), columns:
+  `Organ`, `SampleName`, `SampleBarcodePattern`. Use to populate the
+  `samples:` block of the run config. The 96 Round1 positions must be covered
+  exactly once across all entries within a batch; `dummy` placeholder rows
+  exist for batches where a row was unassigned and must be retained verbatim.
+- [`sublibrary_indices.tsv`](code/01-preprocessing/01-snakemake/sublibrary_indices.tsv)
+  — one row per (organ, sequencing run, modality, sublibrary), columns:
+  `Organ`, `Modality` (ATAC/RNA), `Index`
+  (always `I2`), `Sublibrary` (`CL{N}`), `IndexSequence` (8 bp). For the
+  SRA reprocessing path, only the `(Sublibrary, Modality, IndexSequence)`
+  triple is needed — collapse duplicate rows arising from the same CL being
+  sequenced across multiple flow cells. Use to populate the
+  `sublibraries: {ATAC: {...}, RNA: {...}}` block of the run config.
+
+**Note on the `Organ` column.** `Organ` groups entries by the processing batch,
+not the biological tissue. Most batches map 1:1 to a single organ name (e.g.
+`Heart`, `Liver`), but Lung was processed in two separate batches and is tagged
+`Lung_b12` and `Lung_b18`. Filter on the
+exact `Organ` value when extracting a batch — substring-matching on tissue
+names will collide (e.g. `grep Lung` returns both b12 and b18, and `grep Spleen`
+returns both `AdrenalThyroidSpleen` and `SpleenThymus`).
