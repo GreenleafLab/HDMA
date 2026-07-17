@@ -23,6 +23,7 @@ Contents:
 - [Seurat objects](https://greenleaflab.github.io/HDMA/DATA.html#seurat-objects)
 - [ArchR projects](https://greenleaflab.github.io/HDMA/DATA.html#archr-projects)
 - [BPCells object](https://greenleaflab.github.io/HDMA/DATA.html#bpcells-object)
+- [ChromBPNet training regions](https://greenleaflab.github.io/HDMA/DATA.html#chrombpnet-training-regions)
 - [Trained ChromBPNet models](https://greenleaflab.github.io/HDMA/DATA.html#trained-chrombpnet-models)
 - [ChromBPNet mean contribution scores](https://greenleaflab.github.io/HDMA/DATA.html#chrombpnet-mean-contribution-scores)
 - [Bigwig tracks for observed and predicted accessibility and contrib. scores](https://greenleaflab.github.io/HDMA/DATA.html#bigwig-tracks-for-observed-and-predicted-accessibility-and-contrib-scores)
@@ -417,6 +418,46 @@ and it's important to modify those paths when the folders are moved or downloadi
 this object locally. See the BPCells paper ([Parks & Greenleaf, _biorxiv_, 2025](https://www.biorxiv.org/content/10.1101/2025.03.27.645853v1)) for
 more details on the compression and storage in BPCells objects.
 
+
+
+## ChromBPNet training regions
+
+The peak and background (non-peak) regions used to train the ChromBPNet models
+are provided as a single tar archive, `all_training_regions.tar.gz`, in the Zenodo
+depo [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15200417.svg)](https://doi.org/10.5281/zenodo.15200417).
+These are the per-cell type peak sets used as input for training (and used, for example,
+as the input peaks for the g-chromVAR analysis).
+
+The archive extracts to a directory `4-peaks/all/` containing, for each cluster
+(named using the `Cluster_ChromBPNet` cluster ID from Table S2):
+
+- `<cluster>__peaks_bpnet.bed`: the peak regions used to train ChromBPNet, 1,000 bp windows centered on the peak summit
+- `<cluster>__nonpeaks_fold_<0-4>.bed`: the GC-matched background (non-peak)
+  regions, provided per training fold (`fold_0` through `fold_4`)
+
+The peak BED files have 10 columns following the ChromBPNet convention, where the
+first three are `chr`, `start`, `end` (a 1,000 bp window), and the final column is
+the summit offset relative to the region start (i.e. 500):
+
+```bash
+$ wget https://zenodo.org/record/17427146/files/all_training_regions.tar.gz
+$ tar -xvf all_training_regions.tar.gz
+$ cd 4-peaks/all
+$ ls Muscle_c6*
+Muscle_c6__nonpeaks_fold_0.bed  Muscle_c6__nonpeaks_fold_2.bed  Muscle_c6__nonpeaks_fold_4.bed
+Muscle_c6__nonpeaks_fold_1.bed  Muscle_c6__nonpeaks_fold_3.bed  Muscle_c6__peaks_bpnet.bed
+$ head Muscle_c6__peaks_bpnet.bed
+chr1	183987	184987	.	.	.	.	.	.	500
+chr1	191014	192014	.	.	.	.	.	.	500
+chr1	191356	192356	.	.	.	.	.	.	500
+chr1	267506	268506	.	.	.	.	.	.	500
+chr1	585697	586697	.	.	.	.	.	.	500
+chr1	777915	778915	.	.	.	.	.	.	500
+chr1	778232	779232	.	.	.	.	.	.	500
+chr1	778677	779677	.	.	.	.	.	.	500
+chr1	816861	817861	.	.	.	.	.	.	500
+chr1	817597	818597	.	.	.	.	.	.	500
+```
 
 
 ## Trained ChromBPNet models
