@@ -1,0 +1,204 @@
+Cluster	organ	organ_code	cluster_id	compartment	L1_annot	L2_annot	L3_annot	dend_order	ncell	median_numi	median_ngene	median_nfrags	median_tss	median_frip	note	organ_color	compartment_color	Cluster_ChromBPNet
+LI_13	Liver	LI	13	epi	LI_13_cholangiocyte	Liver cholangiocyte	cholangiocyte	1	1004	1986	1462.5	7509.5	11.826	0.516103027	PKHD1 ANXA4 cholangiocyte (secretes bile)	#3b46a3	#11A579	Liver_c13
+LI_3	Liver	LI	3	epi	LI_3_hepatocyte 2	Liver hepatocyte	hepatocytes	2	8171	1655	1250	8819	12.887	0.541912098	high AFP ALB APOB	#3b46a3	#11A579	Liver_c3
+LI_6	Liver	LI	6	epi	LI_6_hepatocyte 4	Liver hepatocyte	hepatocytes	3	3701	2070	1521	9119	13.364	0.53230799	high AFP ALB APOB	#3b46a3	#11A579	Liver_c6
+LI_1	Liver	LI	1	epi	LI_1_hepatocyte 1	Liver hepatocyte	hepatocytes	4	14247	2051	1477	7801	12.255	0.535465355	high AFP ALB APOB	#3b46a3	#11A579	Liver_c1
+LI_4	Liver	LI	4	epi	LI_4_hepatocyte 3	Liver hepatocyte	hepatocytes	5	3807	3849	2315	6913	11.255	0.516666667	entirely T375_b15_Liver_PCW15; AFP marker	#3b46a3	#11A579	Liver_c4
+AG_2	Adrenal	AG	2	epi	AG_2_adrenal cortex 3	Adrenal adrenal cortex	adrenal cortex	6	511	10567	3661	5692	9.683	0.267903226	NR5A1+ AKR1B1+ SULT2A1+ CYP11A1/CYP11B1+; all PCW18	#876941	#11A579	Adrenal_c2
+AG_0	Adrenal	AG	0	epi	AG_0_adrenal cortex 1	Adrenal adrenal cortex	adrenal cortex	7	823	9498	3280	6784	9.832	0.290608575	NR5A1+ CYP11A1/CYP11B1+; mostly PCW21; groups with 2 and 3 in cluster tree	#876941	#11A579	Adrenal_c0
+AG_3	Adrenal	AG	3	epi	AG_3_adrenal cortex 4	Adrenal adrenal cortex	adrenal cortex	8	483	6340	2487	5519	9.876	0.302071041	NR5A1+; mosly PCW21	#876941	#11A579	Adrenal_c3
+EY_21	Eye	EY	21	epi	EY_21_cornea 2	Eye cornea	cornea	9	67	4192	2493	7417	8.351	0.256375049	PIP5K1B COL4A3 COL4A4	#ff9f0f	#11A579	Eye_c21
+LU_14	Lung	LU	14	epi	LU_14_pulmonary neuroendocrine	Lung pulmonary neuroendocrine	endocrine	10	3041	3994	2447	8665	10.112	0.403747579	GRP NRG1 NRXN1 GRIK2 markers; high GHRL (although not markers)	#f0643e	#11A579	Lung_c14
+ST_16	StomachEsophagus	ST	16	epi	ST_16_endocrine cells	StomachEsophagus endocrine cells	endocrine	11	1289	2003	1438	5616	7.537	0.34012912	GHRL+ high SST HDC	#208A42	#11A579	Stomach_c16
+EY_0	Eye	EY	0	epi	EY_0_retinal progenitor cell	Eye retinal progenitor cell	retinal progenitor cell	12	10546	1747	1304	5474.5	8.5635	0.355952425	CRB1+	#ff9f0f	#11A579	Eye_c0
+BR_1	Brain	BR	1	epi	BR_1_dorsal radial glia	Brain dorsal radial glia	dorsal radial glia	13	9436	5506	2694.5	3350	9.777	0.342484292	VIM+ TOP2A+ (cycling) MOXD1+; EMX1/2+ indicating likely dorsal	#0C727C	#11A579	Brain_c1
+BR_15	Brain	BR	15	epi	BR_15_oligodendrocyte precursor cells	Brain oligodendrocyte precursor cells	oligodendrocyte precursor cells	14	1070	5853.5	2692	3057	8.048	0.277455188	NOVA1 SOX6 LHFPL3 OPCML+ although lacking canonical PDGFRA OLIG2	#0C727C	#11A579	Brain_c15
+EY_8	Eye	EY	8	epi	EY_8_cone	Eye cone	neurons	15	2592	2059.5	1438	4681	8.627	0.319301794	THRB, PRDM1 +	#ff9f0f	#11A579	Eye_c8
+EY_2	Eye	EY	2	epi	EY_2_rod	Eye rod	neurons	16	6100	1139.5	917	4668.5	9.512	0.324145577	rod ANO2+ NR2E3+	#ff9f0f	#11A579	Eye_c2
+EY_7	Eye	EY	7	epi	EY_7_bipolar	Eye bipolar	neurons	17	2907	1305	1000	5283	9.281	0.327515723	GRIK1 CA10 NRXN3 oncone/offcone bipolar	#ff9f0f	#11A579	Eye_c7
+ST_9	StomachEsophagus	ST	9	epi	ST_9_enteric neurons	StomachEsophagus enteric neurons	neurons	18	4256	2897.5	1811	7484.5	7.791	0.305196728	DSCAM+ CHAT+ NOS1+ NRG1+	#208A42	#11A579	Stomach_c9
+AG_4	Adrenal	AG	4	epi	AG_4_sympathoadrenal lineage 1	Adrenal sympathoadrenal lineage	neurons	19	155	5262	2564	4425	10.139	0.210446467	PHOX2A/B+ ISL1+ GATA3+; likely mix of chromaffin cells and sympathoblasts from all samples	#876941	#11A579	Adrenal_c4
+AG_8	Adrenal	AG	8	epi	AG_8_sympathoadrenal lineage 2	Adrenal sympathoadrenal lineage	neurons	20	29	5121	2596	3915	8.737	0.207317073	PHOX2A/B+ ISL1+ GATA3+; likely mix of chromaffin cells and sympathoblasts from all samples	#876941	#11A579	Adrenal_c8
+BR_14	Brain	BR	14	epi	BR_14_excitatory neurons 8	Brain excitatory neurons	neurons	21	2996	4389	2140.5	1770.5	8.3715	0.26135371	CUX2+ excitatory neurons	#0C727C	#11A579	Brain_c14
+BR_4	Brain	BR	4	epi	BR_4_excitatory neurons 3	Brain excitatory neurons	neurons	22	4766	2563	1526	1651	8.57	0.255389374	NEUROD2 excitatory neurons; UNC5D+	#0C727C	#11A579	Brain_c4
+BR_0	Brain	BR	0	epi	BR_0_excitatory neurons 1	Brain excitatory neurons	neurons	23	9750	3355.5	1803	1866	11.861	0.387066946	TBR1/EMX1+ CUX2+ excitatory neurons	#0C727C	#11A579	Brain_c0
+BR_3	Brain	BR	3	epi	BR_3_MGE-derived inhibitory neurons 1	Brain MGE-derived inhibitory neurons	neurons	24	4939	10606	3750	4681	8.343	0.280032034	GABRG3 (GABA receptor) SGCZ marker; GAD1 GAD2 inhibitory neurons; mostly T64_b4_Brain_PCW18; LHX6+ indicating medial ganglionic eminence (MGE) origin	#0C727C	#11A579	Brain_c3
+BR_10	Brain	BR	10	epi	BR_10_CGE-derived inhibitory neurons	Brain CGE-derived inhibitory neurons	neurons	25	3502	3304	1801	1721	10.3635	0.321043582	DLX+ GAD1 GAD2 inhibitory neuron; ADARB2/CALB2 indicative of CGE origin	#0C727C	#11A579	Brain_c10
+BR_9	Brain	BR	9	epi	BR_9_MGE-derived inhibitory neurons 2	Brain MGE-derived inhibitory neurons	neurons	26	3812	4171	2099	2208	9.072	0.287984257	DLX+ GAD1 GAD2 inhibitory neuron; LHX6/SOX6+ indicating MGE-derived	#0C727C	#11A579	Brain_c9
+BR_2	Brain	BR	2	epi	BR_2_excitatory neurons 2	Brain excitatory neurons	neurons	27	6705	6587	2809	3471	7.943	0.275197984	NEUROD2 BCL11B TBR1 POU6F2 excitatory neurons	#0C727C	#11A579	Brain_c2
+BR_6	Brain	BR	6	epi	BR_6_excitatory neurons 5	Brain excitatory neurons	neurons	28	4463	12916	4204	6408	7.895	0.303935348	mostly T47_b4_Brain_PCW17; high SATB2 NEUROD2 FEZF2 excitatory neurons	#0C727C	#11A579	Brain_c6
+BR_5	Brain	BR	5	epi	BR_5_excitatory neurons 4	Brain excitatory neurons	neurons	29	4721	7868	3003	3541	8.922	0.304998568	mostly T64_b4_Brain_PCW18; RFX3 RORB excitatory neurons	#0C727C	#11A579	Brain_c5
+BR_7	Brain	BR	7	epi	BR_7_excitatory neurons 6	Brain excitatory neurons	neurons	30	4405	4842	2302	4021	8.016	0.26961004	CNTN4 excitatory neurons	#0C727C	#11A579	Brain_c7
+BR_12	Brain	BR	12	epi	BR_12_excitatory neurons 7	Brain excitatory neurons	neurons	31	3372	7511	3102.5	4449	6.6585	0.241987543	CNTN4 KCNQ5 excitatory neurons;entirely T63_b4_Brain_PCW20	#0C727C	#11A579	Brain_c12
+EY_20	Eye	EY	20	epi	EY_20_amacrine 2	Eye amacrine	neurons	32	329	3041	1853	6701	8.168	0.285170216	GAD1 GAD2 GABA_amacrine/amacrine	#ff9f0f	#11A579	Eye_c20
+EY_6	Eye	EY	6	epi	EY_6_retinal ganglion	Eye retinal ganglion	neurons	33	3616	5408.5	2844.5	9299	6.8285	0.279085267	RBPMS, GAP43, EPHA6	#ff9f0f	#11A579	Eye_c6
+EY_11	Eye	EY	11	epi	EY_11_horizontal	Eye horizontal	neurons	34	2303	2353	1583	5421	8.911	0.329735176	ONECUT1 ONECUT2 horizontal	#ff9f0f	#11A579	Eye_c11
+EY_3	Eye	EY	3	epi	EY_3_amacrine 1	Eye amacrine	neurons	35	5672	1599	1161	4972.5	8.951	0.309517857	GAD1 GAD2 GABA_amacrine/amacrine	#ff9f0f	#11A579	Eye_c3
+LI_12	Liver	LI	12	imm	LI_12_megakaryocyte	Liver megakaryocyte	immune	36	1042	1960	1406	9223.5	10.187	0.449461508	high PECAM1 and TRPC6; ITGA2B (CD41) DNM3 marker	#3b46a3	#F2B701	Liver_c12
+LU_17	Lung	LU	17	imm	LU_17_megakaryocyte	Lung megakaryocyte	immune	37	284	2742.5	1840	8176	10.2535	0.421200374	ITGA2B (CD41) DNM3 markers	#f0643e	#F2B701	Lung_c17
+LI_0	Liver	LI	0	imm	LI_0_cycling erythroblast	Liver cycling erythroblast	erythroblasts	38	16461	1480	1132	6066	14.276	0.530021834	cycling; ANK1 TFRC SLC4A1	#3b46a3	#F2B701	Liver_c0
+LI_5	Liver	LI	5	imm	LI_5_early erythroblast	Liver early erythroblast	erythroblasts	39	3762	1846.5	1415.5	9036.5	9.3785	0.432707697	cell cycle dependent; high ANK1 TFRC	#3b46a3	#F2B701	Liver_c5
+LI_2	Liver	LI	2	imm	LI_2_erythroblast 1	Liver erythroblast	erythroblasts	40	8716	1250	931.5	4234.5	16.468	0.575901712	ANK1 SLC4A1 ALAS2 TFRC marker	#3b46a3	#F2B701	Liver_c2
+LI_8	Liver	LI	8	imm	LI_8_erythroblast 2	Liver erythroblast	erythroblasts	41	2362	1492	1168.5	5765.5	13.6765	0.500308991	TFRC	#3b46a3	#F2B701	Liver_c8
+EY_18	Eye	EY	18	imm	EY_18_macrophage	Eye macrophage	immune	42	640	2468.5	1754	5739.5	7.367	0.2633843596	PTPRC CD163	#ff9f0f	#F2B701	Eye_c18
+SP_8	Spleen	SP	8	imm	SP_8_Megakaryocyte	Spleen Megakaryocyte	immune	43	1462	1270	1008.5	8970	9.49	0.369073564	RIPOR3+ DNM3+	#3BBCA8	#F2B701	Spleen_c8
+SP_10	Spleen	SP	10	imm	SP_10_Erythroblast	Spleen Erythroblast	erythroblasts	44	1310	1247.5	1026.5	11752	10.3905	0.367128056	SPTA1 and ANK1+ erythroblastoid markers	#3BBCA8	#F2B701	Spleen_c10
+SP_3	Spleen	SP	3	imm	SP_3_B cells	Spleen B cells	immune	45	3866	1148	955	9672	8.7675	0.344923896	MS4A1, CD19, IGHM+	#3BBCA8	#F2B701	Spleen_c3
+SP_9	Spleen	SP	9	imm	SP_9_NK T cells	Spleen NK T cells	immune	46	1413	1031	869	7903	9.272	0.354074074	CD247+	#3BBCA8	#F2B701	Spleen_c9
+TM_6	Thymus	TM	6	epi	TM_6_cortical TEC	Thymus cortical TEC	immune	47	2783	3354	2183	15137	9.276	0.359877947	CDH1+; ADARB2+; SLIT-ROBO signaling; very minor AIRE+ pre-decontX; high expression of Park et al cTEC/mcTEC genes	#6E4B9E	#11A579	Thymus_c6
+LI_11	Liver	LI	11	imm	LI_11_B cell progenitor	Liver B cell progenitor	immune	48	1154	1469	1144.5	6372	12.2955	0.474692339	EBF1 PAX5 marker; B lineage cells https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3323878/	#3b46a3	#F2B701	Liver_c11
+TM_12	Thymus	TM	12	imm	TM_12_macrophages	Thymus macrophages	immune	49	554	2802	1952	11846	9.1155	0.348207389	CD163L1+; high expression of Park et al macrophage genes	#6E4B9E	#F2B701	Thymus_c12
+TM_11	Thymus	TM	11	imm	TM_11_dendritic cells	Thymus dendritic cells	immune	50	787	2983	2012	18951	9.035	0.368432456	FLT3+; high expresison of Park et al DC genes	#6E4B9E	#F2B701	Thymus_c11
+TM_15	Thymus	TM	15	imm	TM_15_B cells	Thymus B cells	immune	51	290	2530	1743	10797.5	8.9465	0.350355501	PAX5+; high expression of Park et al B cell genes	#6E4B9E	#F2B701	Thymus_c15
+TM_0	Thymus	TM	0	imm	TM_0_CD8+ CD4+ thymocytes 1	Thymus CD8+ CD4+ thymocytes	immune	52	9138	1641	1209	7320.5	10.3715	0.401123428	PTPRC+; clusters with 1/3; low CD8+	#6E4B9E	#F2B701	Thymus_c0
+TM_2	Thymus	TM	2	imm	TM_2_CD8+ CD4+ thymocytes 3	Thymus CD8+ CD4+ thymocytes	immune	53	5635	3161	2069	15301	9.74	0.364928561	PTPRC+; cycling (G2/M and S-assigned); clusters with 0/1; low CD8+	#6E4B9E	#F2B701	Thymus_c2
+TM_1	Thymus	TM	1	imm	TM_1_CD8+ CD4+ thymocytes 2	Thymus CD8+ CD4+ thymocytes	immune	54	6268	2216.5	1567.5	8730.5	9.971	0.388331142	TOX/TOX2 markers; PTPRC+; clusters with 0/3; low CD8+	#6E4B9E	#F2B701	Thymus_c1
+BR_17	Brain	BR	17	imm	BR_17_macrophages	Brain macrophages	immune	55	335	4456	2425	2876	8.753	0.299757478	PTPRC LY86 MRC1 CD163L1+; subset with high estimated contamination	#0C727C	#F2B701	Brain_c17
+LI_7	Liver	LI	7	imm	LI_7_Kupffer	Liver Kupffer	immune	56	3467	1800	1358	7607	11.019	0.485857252	LGMN Kupffer cells (liver resident macrophages)	#3b46a3	#F2B701	Liver_c7
+SP_5	Spleen	SP	5	imm	SP_5_Macrophage	Spleen Macrophage	immune	57	2635	1228	1010	11904	7.725	0.32336589	CD163+	#3BBCA8	#F2B701	Spleen_c5
+AG_6	Adrenal	AG	6	imm	AG_6_macrophages	Adrenal macrophages	immune	58	89	4511	2478	4198	9.267	0.215021307	PTPRC+ MRC+ CD163+ IKZF1+; mix of samples	#876941	#F2B701	Adrenal_c6
+HT_14	Heart	HT	14	imm	HT_14_macrophage	Heart macrophage	immune	59	869	2386	1586	4379	11.263	0.447238507	PTPRC marker CD163	#D51F26	#F2B701	Heart_c14
+LU_12	Lung	LU	12	imm	LU_12_macrophage	Lung macrophage	immune	60	3747	2134	1566	6820	10.076	0.407185629	PTPRC CD163	#f0643e	#F2B701	Lung_c12
+ST_19	StomachEsophagus	ST	19	imm	ST_19_macrophage	StomachEsophagus macrophage	immune	61	595	1753	1299	4929	6.856	0.291545455	high PTPRC CD163	#208A42	#F2B701	Stomach_c19
+MU_15	Muscle	MU	15	imm	MU_15_macrophages	Muscle macrophages	immune	62	1755	2404	1678	5947	8.544	0.291740763	expression of macrophage markers inlcuding PTPRC/MRC/F13A1	#89C75F	#F2B701	Muscle_c15
+SK_15	Skin	SK	15	imm	SK_15_macrophage	Skin macrophage	immune	63	632	1968.5	1478	11487	8.015	0.244741623	PTPRC+, MRC1+, LGMN	#ad0773	#F2B701	Skin_c15
+LU_3	Lung	LU	3	epi	LU_3_ciliated 1	Lung ciliated	ciliated	64	13959	3880	2488	10875	10.716	0.44472084	DNAH11 DNAH5 dynein markers	#f0643e	#11A579	Lung_c3
+LU_15	Lung	LU	15	epi	LU_15_ciliated 2	Lung ciliated	ciliated	65	1709	3981	2500	10085	10.776	0.447297179	DNAH11 DNAH5 dynein markers	#f0643e	#11A579	Lung_c15
+ST_13	StomachEsophagus	ST	13	epi	ST_13_epithelial basal/keratinocyte	StomachEsophagus epithelial basal/keratinocyte	keratinocytes	66	2197	2630	1760	5906	7.673	0.345842956	mostly esophagus sample; KRT5+ KRT15+ high SCPEP1	#208A42	#11A579	Stomach_c13
+ST_4	StomachEsophagus	ST	4	epi	ST_4_keratinocytes/tuft cells	StomachEsophagus keratinocytes/tuft cells	keratinocytes	67	5869	3064	1883	5267	7.829	0.41417659	mostly esophagus sample; KRT13+ KRT4+ KRT7+ IRAG2+	#208A42	#11A579	Stomach_c4
+ST_15	StomachEsophagus	ST	15	epi	ST_15_ciliated epithelium	StomachEsophagus ciliated epithelium	ciliated	68	1430	5941.5	2942.5	8573	6.7095	0.355853986	mostly esophagus sample; high umi; DNAH12+ CFAP299+	#208A42	#11A579	Stomach_c15
+ST_0	StomachEsophagus	ST	0	epi	ST_0_chief and neck cells	StomachEsophagus chief and neck cells	chief and neck cells	69	11861	1884	1402	6182	6.641	0.373969223	MUC6+	#208A42	#11A579	Stomach_c0
+ST_3	StomachEsophagus	ST	3	epi	ST_3_parietal cells	StomachEsophagus parietal cells	parietal cells	70	6473	2339	1604	6494	6.899	0.346722523	ATP4A+ ATP4B+	#208A42	#11A579	Stomach_c3
+LU_5	Lung	LU	5	epi	LU_5_airway epithelial progenitor 2	Lung airway epithelial progenitor	airway epithelial progenitor	71	10353	1737	1335	6975	10.459	0.426128058	SFTPB marker	#f0643e	#11A579	Lung_c5
+LU_0	Lung	LU	0	epi	LU_0_airway epithelial progenitor 1	Lung airway epithelial progenitor	airway epithelial progenitor	72	28899	1839	1385	7820	11.198	0.470843457	SFTPB SFTPC marker	#f0643e	#11A579	Lung_c0
+LU_10	Lung	LU	10	epi	LU_10_airway epithelial progenitor 5	Lung airway epithelial progenitor	airway epithelial progenitor	73	6086	3427	2111	4225	9.565	0.430564774	cycling; entirely T164_b12_Lung_PCW10; high ETV5 some SOX9	#f0643e	#11A579	Lung_c10
+BR_13	Brain	BR	13	end	BR_13_endothelial 1	Brain endothelial	endothelial	74	3234	2067	1491.5	2956.5	11.9775	0.442247845	entirely T382_b4_Brain_PCW15; MECOM+	#0C727C	#7F3C8D	Brain_c13
+LU_8	Lung	LU	8	epi	LU_8_airway epithelial progenitor 3	Lung airway epithelial progenitor	airway epithelial progenitor	75	8389	2206	1529	3804	12.271	0.530136986	SFTPB marker	#f0643e	#11A579	Lung_c8
+MU_8	Muscle	MU	8	str	MU_8_smooth muscle 2	Muscle smooth muscle	smooth muscle	76	4571	1382	1062	3719	10.589	0.299306063	MECOM/SFTPB+	#89C75F	#3969AC	Muscle_c8
+SK_17	Skin	SK	17	epi	SK_17_keratinocyte 2	Skin keratinocyte	keratinocytes	77	243	2745	1923	15798	8.556	0.304391408	KRT4, KRT13, KRT23+, MYO5B+ (either granular or basal keratinocyte)	#ad0773	#11A579	Skin_c17
+SK_18	Skin	SK	18	epi	SK_18_epidermal progenitor	Skin epidermal progenitor	epidermal progenitor	78	226	3222	2219	20768.5	8.0565	0.256153333	DNMT1+, BMP7+	#ad0773	#11A579	Skin_c18
+SK_2	Skin	SK	2	epi	SK_2_keratinocyte 1	Skin keratinocyte	keratinocytes	79	6480	1614.5	1251.5	10549.5	8.113	0.286928611	KRT10+, TP63+, MME+, DSC3+	#ad0773	#11A579	Skin_c2
+SK_12	Skin	SK	12	epi	SK_12_interfollicular cells	Skin interfollicular cells	interfollicular cells	80	1731	1624	1268	11598	8.177	0.269016092	EDA+, TSPEAR+, FRAS1+	#ad0773	#11A579	Skin_c12
+HT_5	Heart	HT	5	str	HT_5_aCM 2	Heart aCM	cardiomyocytes	81	8102	7503	3492	7897	11.43	0.506152255	MYL2 ANKRD1 MYL7 TNNI3 ACTN2 CNN1 marker; mostly T104_b11_Heart_PCW17; high MYL7 MYH6 NPPA atrial	#D51F26	#3969AC	Heart_c5
+HT_8	Heart	HT	8	str	HT_8_cycling vCM	Heart cycling vCM	cardiomyocytes	82	5654	3687	2014.5	6596.5	12.6755	0.562222066	cell cycle dependent	#D51F26	#3969AC	Heart_c8
+HT_7	Heart	HT	7	str	HT_7_vCM 3	Heart vCM	cardiomyocytes	83	5716	1781.5	1166	5337.5	12.9645	0.590143549	ANKRD1 ACTN2 MYL2 marker; mostly T104_b11_Heart_PCW17	#D51F26	#3969AC	Heart_c7
+HT_1	Heart	HT	1	str	HT_1_vCM 2	Heart vCM	cardiomyocytes	84	14883	2702	1530	4711	14.543	0.611670616	high ACTN2 ANKRD1 MYOCD no NPPA MYH6; entirely T014_b11_Heart_PCW18	#D51F26	#3969AC	Heart_c1
+HT_0	Heart	HT	0	str	HT_0_vCM 1	Heart vCM	cardiomyocytes	85	33620	2865	1588	4297	13.073	0.584998747	high ACTN2 ANKRD1 MYOCD no NPPA MYH6	#D51F26	#3969AC	Heart_c0
+HT_15	Heart	HT	15	epi	HT_15_epicardial	Heart epicardial	epicardial	86	528	5563	2913.5	11645.5	9.388	0.354528032	EFEMP1 WT1 marker	#D51F26	#11A579	Heart_c15
+HT_2	Heart	HT	2	str	HT_2_aCM 1	Heart aCM	cardiomyocytes	87	13925	4281	2404	5549	10.272	0.455488163	NPPA MYH6 MYL7 marker; entirely T032_b11_Heart_PCW12	#D51F26	#3969AC	Heart_c2
+SP_2	Spleen	SP	2	end	SP_2_Endothelial progenitor 1	Spleen Endothelial progenitor	endothelial	88	3925	1261	1024	9814	9.627	0.407085637	CD34+ and PECAM positive	#3BBCA8	#7F3C8D	Spleen_c2
+SP_6	Spleen	SP	6	end	SP_6_Endothelial progenitor 2	Spleen Endothelial progenitor	endothelial	89	2012	1364.5	1106	11179	8.3495	0.32019876	CD34+ and PECAM positive	#3BBCA8	#7F3C8D	Spleen_c6
+BR_16	Brain	BR	16	end	BR_16_endothelial 2	Brain endothelial	endothelial	90	648	12580	4536	7422	7.7325	0.286770229	VWF/MECOM/TEK	#0C727C	#7F3C8D	Brain_c16
+HT_11	Heart	HT	11	end	HT_11_endocardial 2	Heart endocardial	endothelial	91	2438	4112	2359.5	7079.5	11.0075	0.473145918	PECAM1 marker; high CDH5 NOTCH1	#D51F26	#7F3C8D	Heart_c11
+AG_5	Adrenal	AG	5	end	AG_5_endothelial	Adrenal endothelial	endothelial	92	115	4117	2188	4192	10.125	0.241716546	PECAM1+ TEK+; mix of samples	#876941	#7F3C8D	Adrenal_c5
+LI_10	Liver	LI	10	end	LI_10_endothelial	Liver endothelial	endothelial	93	1674	1773.5	1348	7757	11.855	0.498689505	LDB2 STAB2 KDR endothelial	#3b46a3	#7F3C8D	Liver_c10
+MU_5	Muscle	MU	5	end	MU_5_endothelial 1	Muscle endothelial	endothelial	94	5955	3137	2041	6804	8.626	0.309281786	MECOM/VWF+; also expressing VEGF recepors (KDR/FLT4/NRP2)	#89C75F	#7F3C8D	Muscle_c5
+SK_4	Skin	SK	4	end	SK_4_vascular endothelium	Skin vascular endothelium	endothelial	95	4889	2314	1684	12033	9.717	0.297590112	PECAM1, VWF, FLT1(VEGFR1)+	#ad0773	#7F3C8D	Skin_c4
+EY_9	Eye	EY	9	end	EY_9_vascular endothelium	Eye vascular endothelium	endothelial	96	2451	2297	1665	5664	6.913	0.238997821	PECAM1	#ff9f0f	#7F3C8D	Eye_c9
+HT_4	Heart	HT	4	end	HT_4_endocardial 1	Heart endocardial	endothelial	97	8253	4041	2346	8340	12.775	0.544628752	PECAM1 CDH5 marker; high NOTCH1	#D51F26	#7F3C8D	Heart_c4
+ST_10	StomachEsophagus	ST	10	end	ST_10_endothelial	StomachEsophagus endothelial	endothelial	98	3381	2925	1952	8246	6.78	0.291659037	PECAM1+ VWF+	#208A42	#7F3C8D	Stomach_c10
+LU_2	Lung	LU	2	end	LU_2_vascular endothelial	Lung vascular endothelial	endothelial	99	21309	2530	1768	7937	10.895	0.439747241	PECAM1	#f0643e	#7F3C8D	Lung_c2
+LU_11	Lung	LU	11	end	LU_11_lymphatics	Lung lymphatics	lymphatics	100	3748	3297	2198	9018	10.4675	0.407718189	PROX1 RELN marker; lymphatics	#f0643e	#7F3C8D	Lung_c11
+SK_13	Skin	SK	13	end	SK_13_lymphatic endothelium	Skin lymphatic endothelium	lymphatics	101	1171	2216	1620	11785	9.003	0.2726693	PROX1+, STAB2+	#ad0773	#7F3C8D	Skin_c13
+ST_20	StomachEsophagus	ST	20	end	ST_20_lymphatics	StomachEsophagus lymphatics	lymphatics	102	383	4337	2589	12228	6.305	0.275779975	high umi; high STAB2 RELN PROX1	#208A42	#7F3C8D	Stomach_c20
+TR_6	Thyroid	TR	6	epi	TR_6_thyroid follicular 4	Thyroid thyroid follicular	thyroid follicular	103	299	3412	2199	9162	8.323	0.23081571	TPO, TG, TSHR+	#8A9FD1	#11A579	Thyroid_c6
+TR_7	Thyroid	TR	7	str	TR_7_thyroid follicular 5	Thyroid thyroid follicular	thyroid follicular	104	205	5072	2997	14047	8.576	0.234077947	TPO, TG, TSHR+	#8A9FD1	#3969AC	Thyroid_c7
+TR_0	Thyroid	TR	0	epi	TR_0_thyroid follicular 1	Thyroid thyroid follicular	thyroid follicular	105	2956	877	690.5	2672.5	8.264	0.218073469	TPO, TG, TSHR+	#8A9FD1	#11A579	Thyroid_c0
+TR_1	Thyroid	TR	1	epi	TR_1_thyroid follicular 2	Thyroid thyroid follicular	thyroid follicular	106	1833	1729	1253	5348	8.306	0.224600457	TPO, TG, TSHR+	#8A9FD1	#11A579	Thyroid_c1
+EY_5	Eye	EY	5	str	EY_5_extraocular muscle	Eye extraocular muscle	skeletal muscle	107	4008	3553.5	2147	5811	8.0715	0.28209391	high TRPC6; TTN MYH3 skeletal muscle	#ff9f0f	#3969AC	Eye_c5
+MU_18	Muscle	MU	18	str	MU_18_myocytes	Muscle myocytes	skeletal muscle	108	1006	3318	2012	6221	8.871	0.331913197	clusters with 0/2/10/16	#89C75F	#3969AC	Muscle_c18
+MU_0	Muscle	MU	0	str	MU_0_myocytes (fast/Type II) 1	Muscle myocytes (fast/Type II)	skeletal muscle	109	12909	2491	1576	4924	9.282	0.364124924	high TTN/MYLPF; high MYOG; low PAX3 (PMID: 32396864)	#89C75F	#3969AC	Muscle_c0
+MU_16	Muscle	MU	16	str	MU_16_myocytes (slow/Type I) 2	Muscle myocytes (slow/Type I)	skeletal muscle	110	1263	4471	2589	6073	8.43	0.316220238	MYH7+; MYOD1-low but MYOG/ACTC1 high (PMID: 37003036); TNNT1 contractile gene	#89C75F	#3969AC	Muscle_c16
+TM_16	Thymus	TM	16	epi	TM_16_medullary TEC (neuromuscular)	Thymus medullary TEC (neuromuscular)	thymic epithelial cells	111	98	3763	2211.5	10618.5	10.267	0.328792521	expression of BCHE (neurotransmitter enzyme)	#6E4B9E	#11A579	Thymus_c16
+TM_3	Thymus	TM	3	epi	TM_3_medullary TEC (myoid Type IIa) 1	Thymus medullary TEC (myoid Type IIa)	thymic epithelial cells	112	5033	2833	1753	7791	10.369	0.333408782	MYOG/MYPN/MYOT/MYH2+ (similar to TEC(myo) in Park et al); clusters with 14	#6E4B9E	#11A579	Thymus_c3
+TM_14	Thymus	TM	14	epi	TM_14_medullary TEC (myoid Type I)	Thymus medullary TEC (myoid Type I)	thymic epithelial cells	113	358	3772	2199	9345	9.6745	0.310805065	MYH7+; clusters with 2	#6E4B9E	#11A579	Thymus_c14
+TM_7	Thymus	TM	7	end	TM_7_endothelial cells	Thymus endothelial cells	endothelial	114	1332	3690	2352.5	10580	8.5815	0.264372979	PECAM1+/MECOM+	#6E4B9E	#7F3C8D	Thymus_c7
+TM_4	Thymus	TM	4	epi	TM_4_medullary TEC (myoid Type IIa) 2	Thymus medullary TEC (myoid Type IIa)	thymic epithelial cells	115	3228	5237	3106	6042	8.554	0.275147252	MYH2+	#6E4B9E	#11A579	Thymus_c4
+TM_9	Thymus	TM	9	epi	TM_9_medullary TEC (myoid) 2	Thymus medullary TEC (myoid)	thymic epithelial cells	116	868	4783.5	2854.5	15510	6.987	0.200075469	PAX7+; high expression of TEC(myo) signature	#6E4B9E	#11A579	Thymus_c9
+TM_8	Thymus	TM	8	epi	TM_8_medullary TEC (myoid) 1	Thymus medullary TEC (myoid)	thymic epithelial cells	117	1086	2212	1594	7036.5	9.908	0.294162218	PAX7+; high expression of TEC(myo) signature	#6E4B9E	#11A579	Thymus_c8
+TM_10	Thymus	TM	10	str	TM_10_vascular smooth muscle	Thymus vascular smooth muscle	smooth muscle	118	812	2944	1952	9510	8.282	0.257067402	ACTA2/RGS5/PDGFRB+	#6E4B9E	#3969AC	Thymus_c10
+TM_5	Thymus	TM	5	str	TM_5_fibroblasts 1	Thymus fibroblasts	fibroblasts	119	2959	2706	1832	8797	7.847	0.249593029	COL1A2/COl3A1/DCN+	#6E4B9E	#3969AC	Thymus_c5
+MU_2	Muscle	MU	2	str	MU_2_myocytes (fast/Type II) 2	Muscle myocytes (fast/Type II)	skeletal muscle	120	7879	1991	1461	1667	8.294	0.287381473	high PAX7; high TTN/MYLPF; Myosin heavy chain embryonic (MYH3)+; high MYOG/PAX7 low PAX3  (PMID: 32396864)	#89C75F	#3969AC	Muscle_c2
+MU_10	Muscle	MU	10	str	MU_10_myocytes (slow/Type I) 1	Muscle myocytes (slow/Type I)	skeletal muscle	121	4136	1845	1400	1644	7.66	0.24880602	MYBPC1/MYH7B/TNNT1 (PMID: PMC9569562); MYOD1-low but MYOG/ACTC1 high (PMID: 37003036); TNNT1 contractile gene; MUSK+ (neuromuscular synaptic gene)	#89C75F	#3969AC	Muscle_c10
+HT_6	Heart	HT	6	str	HT_6_fibroblast 2	Heart fibroblast	fibroblasts	122	7147	1699	1256	9416	6.447	0.214071135	COL1A2 COL1A1 MYH3 marker; entirely T379_b11_Heart_PCW15	#D51F26	#3969AC	Heart_c6
+HT_12	Heart	HT	12	str	HT_12_fibroblast 4	Heart fibroblast	fibroblasts	123	1728	2145.5	1423.5	9705	7.208	0.245982359	entirely cluster 0 of T379_b11_Heart_PCW15; MYH3 NEB MYBPC1; same cluster level as 6	#D51F26	#3969AC	Heart_c12
+ST_18	StomachEsophagus	ST	18	str	ST_18_MYH3+ smooth muscle	StomachEsophagus MYH3+ smooth muscle	smooth muscle	124	1003	1649	1225	9000	7.552	0.322284469	TTN+ MYH3+ TNNT3+	#208A42	#3969AC	Stomach_c18
+SK_8	Skin	SK	8	str	SK_8_skeletal muscle 1	Skin skeletal muscle	skeletal muscle	125	2354	3035	2104.5	15036.5	6.737	0.22491894	NEB, MYH3, DMD, ACTN2	#ad0773	#3969AC	Skin_c8
+SK_11	Skin	SK	11	str	SK_11_skeletal muscle 2	Skin skeletal muscle	skeletal muscle	126	1799	1556	1165	7535	8.157	0.275835382	NEB, MYH3, DMD, ACTN2	#ad0773	#3969AC	Skin_c11
+SK_16	Skin	SK	16	str	SK_16_fibroblast 6	Skin fibroblast	fibroblasts	127	323	2437	1680	12720	8.801	0.266311585	PDZRN4, ""BMP5"", ""PRLR""	#ad0773	#3969AC	Skin_c16
+TM_17	Thymus	TM	17	str	TM_17_fibroblasts 3	Thymus fibroblasts	fibroblasts	128	93	4355	2727	14998	8.029	0.240526835	FN1+/FLRT2+	#6E4B9E	#3969AC	Thymus_c17
+AG_1	Adrenal	AG	1	epi	AG_1_adrenal cortex 2	Adrenal adrenal cortex	adrenal cortex	129	576	6827.5	3114	4341.5	10.3445	0.240022741	AGTR1+ likely zona glomerulosa; all PCW17	#876941	#11A579	Adrenal_c1
+AG_7	Adrenal	AG	7	str	AG_7_stromal	Adrenal stromal	stromal	130	77	5502	2741	4658	9.615	0.200500744	COL3A1+ TRPC6+; possibly mix of fibroblasts & pericytes; mix of all samples	#876941	#3969AC	Adrenal_c7
+TR_5	Thyroid	TR	5	str	TR_5_skeletal muscle	Thyroid skeletal muscle	skeletal muscle	131	643	1633	1137	4934	9.389	0.260225605	MYO18B, MYOM1, SOX6	#8A9FD1	#3969AC	Thyroid_c5
+TR_10	Thyroid	TR	10	end	TR_10_endothelial	Thyroid endothelial	endothelial	132	104	1424	1098	4631.5	9.4335	0.227916486	PECAM1+	#8A9FD1	#7F3C8D	Thyroid_c10
+TR_9	Thyroid	TR	9	str	TR_9_smooth muscle	Thyroid smooth muscle	smooth muscle	133	118	1315.5	1012.5	4462.5	9.0155	0.226861809	ACTA2, TAGLN+	#8A9FD1	#3969AC	Thyroid_c9
+TR_3	Thyroid	TR	3	str	TR_3_stromal	Thyroid stromal	stromal	134	842	1211	945	3763	9.052	0.220377411	unclear markers but still has NKAIN3, P3H2 expression	#8A9FD1	#3969AC	Thyroid_c3
+TR_4	Thyroid	TR	4	str	TR_4_fibroblast	Thyroid fibroblast	fibroblasts	135	781	1442	1092	5173	8.131	0.212655087	COL1A1, COL1A2 positive but not contractile	#8A9FD1	#3969AC	Thyroid_c4
+TR_11	Thyroid	TR	11	epi	TR_11_parathyroid	Thyroid parathyroid	parathyroid	136	38	1086.5	851.5	5151	9.5625	0.291623458	CASR, SPOCK3, DNAH11 positive	#8A9FD1	#11A579	Thyroid_c11
+TR_2	Thyroid	TR	2	epi	TR_2_thyroid follicular 3	Thyroid thyroid follicular	thyroid follicular	137	1280	1576.5	1132	4630.5	9.6495	0.312394404	TPO, TG, TSHR+	#8A9FD1	#11A579	Thyroid_c2
+TR_8	Thyroid	TR	8	epi	TR_8_thyroid follicular 6	Thyroid thyroid follicular	thyroid follicular	138	200	3141	1972	6855	9.3005	0.300667257	TPO, TG, TSHR+	#8A9FD1	#11A579	Thyroid_c8
+SP_11	Spleen	SP	11	str	SP_11_Pericyte	Spleen Pericyte	pericytes	139	605	1599	1237	11802	8.745	0.354084798	ACTA2+, TRPC6	#3BBCA8	#3969AC	Spleen_c11
+SP_0	Spleen	SP	0	str	SP_0_Fibroblast 1	Spleen Fibroblast	fibroblasts	140	6992	1306	1052	10301.5	9.164	0.384202922	ATXN1+	#3BBCA8	#3969AC	Spleen_c0
+SP_1	Spleen	SP	1	str	SP_1_Fibroblast 2	Spleen Fibroblast	fibroblasts	141	4525	1280	1052	9449	8.022	0.299093892	ATXN1+	#3BBCA8	#3969AC	Spleen_c1
+SP_4	Spleen	SP	4	str	SP_4_Fibroblast 3	Spleen Fibroblast	fibroblasts	142	2645	1870	1426	12785	8.129	0.313241895	ATXN1+	#3BBCA8	#3969AC	Spleen_c4
+SP_7	Spleen	SP	7	str	SP_7_Fibroblast 4	Spleen Fibroblast	fibroblasts	143	1787	1538	1183	11094	8.564	0.360448366	ATXN1+	#3BBCA8	#3969AC	Spleen_c7
+EY_10	Eye	EY	10	epi	EY_10_RPE	Eye RPE	pigmented epithelium	144	2441	2226	1593	6760	7.39	0.291489362	TRPM3 TRPM1 PLD5 OPCML BEST1 markers RPE	#ff9f0f	#11A579	Eye_c10
+EY_15	Eye	EY	15	epi	EY_15_ciliated pigmented epithelium	Eye ciliated pigmented epithelium	pigmented epithelium	145	1081	2053	1490	6337	8.143	0.294491138	SLC4A4 SLC38A11 ATP6V1C2	#ff9f0f	#11A579	Eye_c15
+EY_19	Eye	EY	19	epi	EY_19_cornea 1	Eye cornea	cornea	146	519	1948	1441	5142	8.349	0.305754869	PIP5K1B COL4A3 COL4A4	#ff9f0f	#11A579	Eye_c19
+EY_12	Eye	EY	12	str	EY_12_smooth muscle	Eye smooth muscle	smooth muscle	147	2141	1748	1295	3926	8.243	0.27510917	MYH11 smooth muscle cell	#ff9f0f	#3969AC	Eye_c12
+EY_1	Eye	EY	1	str	EY_1_fibroblast	Eye fibroblast	fibroblasts	148	6420	1773.5	1328	3965	7.3525	0.244045618	high COL1A2 COL1A1 fibroblast	#ff9f0f	#3969AC	Eye_c1
+EY_4	Eye	EY	4	str	EY_4_trabecular meshwork	Eye trabecular meshwork	trabecular meshwork	149	4704	1844	1357.5	4115	7.22	0.254044549	BICC1 LAMA4 PIEZO2	#ff9f0f	#3969AC	Eye_c4
+ST_17	StomachEsophagus	ST	17	str	ST_17_smooth muscle 4	StomachEsophagus smooth muscle	smooth muscle	150	1070	2215	1428.5	3380	7.5435	0.364559281	mostly esophagus sample; MYH11+ COL12A1+ ACTA2+ MYH11+	#208A42	#3969AC	Stomach_c17
+ST_7	StomachEsophagus	ST	7	str	ST_7_smooth muscle 3	StomachEsophagus smooth muscle	smooth muscle	151	5518	2597.5	1553.5	3830	8.5245	0.372567776	mostly esophagus sample; ACTA2+ MYH11+	#208A42	#3969AC	Stomach_c7
+ST_11	StomachEsophagus	ST	11	str	ST_11_cycling stromal	StomachEsophagus cycling stromal	stromal	152	3130	2137	1507.5	5848	7.736	0.33434332	cell cycle dependent; MKI67+	#208A42	#3969AC	Stomach_c11
+ST_2	StomachEsophagus	ST	2	str	ST_2_smooth muscle 2	StomachEsophagus smooth muscle	smooth muscle	153	6860	2179	1561.5	8330.5	7.058	0.310134115	COL1A1+ ACTA2+ COL3A1+ COL1A2+ MYH11+	#208A42	#3969AC	Stomach_c2
+ST_1	StomachEsophagus	ST	1	str	ST_1_smooth muscle 1	StomachEsophagus smooth muscle	smooth muscle	154	7577	1717	1205	3480	9.464	0.413793103	ACTA2+ MYH11+	#208A42	#3969AC	Stomach_c1
+ST_14	StomachEsophagus	ST	14	str	ST_14_interstitial cells of Cajal	StomachEsophagus interstitial cells of Cajal	interstitial cells of Cajal	155	1893	1928	1347	4286	7.295	0.324267782	ANO1+ KIT+	#208A42	#3969AC	Stomach_c14
+ST_5	StomachEsophagus	ST	5	str	ST_5_fibroblasts 1	StomachEsophagus fibroblasts	fibroblasts	156	5672	1577	1173	4232.5	6.99	0.306583784	high DCN COL1A2 FBLN1	#208A42	#3969AC	Stomach_c5
+ST_6	StomachEsophagus	ST	6	str	ST_6_fibroblasts 2	StomachEsophagus fibroblasts	fibroblasts	157	5555	1804	1287	4140	6.895	0.310701107	high DCN COL1A2 FBLN1	#208A42	#3969AC	Stomach_c6
+LU_16	Lung	LU	16	epi	LU_16_mesothelial	Lung mesothelial	mesothelial	158	395	3727	2393	9957	10.117	0.376169406	C3	#f0643e	#11A579	Lung_c16
+ST_21	StomachEsophagus	ST	21	str	ST_21_mesothelial	StomachEsophagus mesothelial	mesothelial	159	243	3002	2020	9200	6.417	0.251187401	high umi; mesothelial WT1+	#208A42	#3969AC	Stomach_c21
+LU_6	Lung	LU	6	str	LU_6_pericytes	Lung pericytes	pericytes	160	9897	2429	1696	7272	10.186	0.429091833	PDGFRB TRPC6 LRRTM4 SLIT3	#f0643e	#3969AC	Lung_c6
+MU_19	Muscle	MU	19	str	MU_19_pericytes 2	Muscle pericytes	pericytes	161	928	1594.5	1183	4097	8.2765	0.247642909	low UMI; ITGA1+ TRPC6+	#89C75F	#3969AC	Muscle_c19
+LU_13	Lung	LU	13	str	LU_13_airway smooth muscle 2	Lung airway smooth muscle	smooth muscle	162	3507	3113	1915	3664	8.617	0.356070714	cycling; entirely T164_b12_Lung_PCW10; EYA4 HHIP MYH11 MYOCD markers	#f0643e	#3969AC	Lung_c13
+BR_11	Brain	BR	11	str	BR_11_smooth muscle cells 2	Brain smooth muscle cells	smooth muscle	163	3373	2095	1464	2463	9.057	0.336453202	ACTA2/PRDM6, clusters with 8	#0C727C	#3969AC	Brain_c11
+MU_1	Muscle	MU	1	str	MU_1_smooth muscle 1	Muscle smooth muscle	smooth muscle	164	8838	1226	944	3615.5	8.427	0.242167608	low UMI; MYLK high; mostly PCW17; G2/M phases	#89C75F	#3969AC	Muscle_c1
+LU_4	Lung	LU	4	str	LU_4_airway smooth muscle 1	Lung airway smooth muscle	smooth muscle	165	12194	1667	1260.5	5780.5	10.8435	0.453884505	HHIP EYA4 MYH11 DACH2 HPSE2 markers	#f0643e	#3969AC	Lung_c4
+LU_7	Lung	LU	7	str	LU_7_airway fibroblast 2	Lung airway fibroblast	fibroblasts	166	8418	1566	1134	2819	10.627	0.468500945	MEOX2 marker; high WNT2	#f0643e	#3969AC	Lung_c7
+LU_1	Lung	LU	1	str	LU_1_airway fibroblast 1	Lung airway fibroblast	fibroblasts	167	22426	1674	1256.5	5717	9.656	0.411127211	MEOX2 marker; high WNT2	#f0643e	#3969AC	Lung_c1
+LU_9	Lung	LU	9	epi	LU_9_airway epithelial progenitor 4	Lung airway epithelial progenitor	airway epithelial progenitor	168	6559	2413	1685	6574	10.753	0.451555329	cycling; high ETV5 some SFPTB	#f0643e	#11A579	Lung_c9
+MU_6	Muscle	MU	6	end	MU_6_endothelial 2	Muscle endothelial	endothelial	169	5944	3318.5	2170	8562	8.939	0.257085617	PECAM1;VWF;ESAM+; mostly PCW17	#89C75F	#7F3C8D	Muscle_c6
+BR_8	Brain	BR	8	str	BR_8_smooth muscle cells 1	Brain smooth muscle cells	smooth muscle	170	4070	4973	2856.5	6185.5	9.693	0.34468951	ACTA2/PRDM6, clusters with 11	#0C727C	#3969AC	Brain_c8
+MU_11	Muscle	MU	11	end	MU_11_endothelial 3	Muscle endothelial	endothelial	171	3590	1149	955	1671.5	8.825	0.258446927	PECAM1;VWF;ESAM+; mostly PCW17	#89C75F	#7F3C8D	Muscle_c11
+EY_17	Eye	EY	17	str	EY_17_melanocyte	Eye melanocyte	neural crest derived	172	686	2210	1563	5778.5	7.0585	0.25451919	PAX3 TYR	#ff9f0f	#3969AC	Eye_c17
+SK_10	Skin	SK	10	epi	SK_10_melanocyte	Skin melanocyte	neural crest derived	173	1878	2086	1538.5	11650.5	9.7015	0.319743878	TYRP1+, TRPM1+, DCT+, all components of pigment producing genes	#ad0773	#11A579	Skin_c10
+EY_13	Eye	EY	13	epi	EY_13_astrocyte	Eye astrocyte	neural crest derived	174	1932	1884.5	1390.5	5165.5	8.5235	0.33313377	high PAX2 GFAP; DCLK1 ERBB4 marker	#ff9f0f	#11A579	Eye_c13
+AG_9	Adrenal	AG	9	epi	AG_9_schwann cell precursors	Adrenal schwann cell precursors	neural crest derived	175	25	4319	2382	4698	10.074	0.207025503	CDH19 MPZ ERBB3 PLP1+	#876941	#11A579	Adrenal_c9
+SK_7	Skin	SK	7	epi	SK_7_schwann	Skin schwann	neural crest derived	176	3111	2319	1685	13144	10.256	0.313052562	NRXN1+, CDH19+	#ad0773	#11A579	Skin_c7
+HT_13	Heart	HT	13	epi	HT_13_neuronal	Heart neuronal	neural crest derived	177	1036	2440	1616	9193.5	8.03	0.271916426	NRXN1 XKR4 LRRTM4 marker; half is cluster 6 of T379_b11_Heart_PCW15; neuronal receptor	#D51F26	#11A579	Heart_c13
+EY_16	Eye	EY	16	epi	EY_16_schwann	Eye schwann	neural crest derived	178	1017	2043	1464	4000	7.768	0.254341019	NRXN1 NCAM2	#ff9f0f	#11A579	Eye_c16
+ST_8	StomachEsophagus	ST	8	str	ST_8_enteric glia	StomachEsophagus enteric glia	neural crest derived	179	4858	2408.5	1629	6390.5	7.908	0.328221555	same cluster level as 19 immune	#208A42	#3969AC	Stomach_c8
+SK_14	Skin	SK	14	epi	SK_14_melanocyte progenitor	Skin melanocyte progenitor	neural crest derived	180	764	1337	1014.5	6240	9.1795	0.336565114	EDNRB+ ITGA8+ temporary until additional marker validation	#ad0773	#11A579	Skin_c14
+SK_9	Skin	SK	9	str	SK_9_fibroblast 5	Skin fibroblast	fibroblasts	181	2251	1157	923	5735	12.146	0.383023873	KIF26B+, SPON1+, DAAM2+, KCNN2+	#ad0773	#3969AC	Skin_c9
+SK_0	Skin	SK	0	str	SK_0_fibroblast 1	Skin fibroblast	fibroblasts	182	9770	1045	839	5309	11.2075	0.367351935	RHOJ, CUBN	#ad0773	#3969AC	Skin_c0
+SK_3	Skin	SK	3	str	SK_3_fibroblast 3	Skin fibroblast	fibroblasts	183	5251	2099	1546	11838	9.272	0.29682766	RHOJ, CUBN	#ad0773	#3969AC	Skin_c3
+MU_20	Muscle	MU	20	epi	MU_20_keratinocytes 2	Muscle keratinocytes	keratinocytes	184	921	3651	2256	4834	6.689	0.218136135	KRT4/17+, SCEL	#89C75F	#11A579	Muscle_c20
+MU_13	Muscle	MU	13	epi	MU_13_keratinocytes 1	Muscle keratinocytes	keratinocytes	185	2660	3016	1987.5	7178.5	7.1465	0.230347919	KRT10/SCEL	#89C75F	#11A579	Muscle_c13
+MU_21	Muscle	MU	21	str	MU_21_myogenic progenitors 3	Muscle myogenic progenitors	myogenic progenitors	186	546	3320.5	2087.5	7041	6.9	0.219789839	PAX3+	#89C75F	#3969AC	Muscle_c21
+MU_12	Muscle	MU	12	str	MU_12_myogenic progenitors 2	Muscle myogenic progenitors	myogenic progenitors	187	3372	1454	1148.5	1581	6.648	0.169152968	PAX3+	#89C75F	#3969AC	Muscle_c12
+MU_3	Muscle	MU	3	str	MU_3_myogenic progenitors 1	Muscle myogenic progenitors	myogenic progenitors	188	7496	2613.5	1720	5669	7.6355	0.217088561	PAX3+	#89C75F	#3969AC	Muscle_c3
+EY_14	Eye	EY	14	str	EY_14_myogenic progenitor	Eye myogenic progenitor	myogenic progenitors	189	1923	2012	1484	3226	7.691	0.289363324	CLCN5 BMPR1B NCOA1	#ff9f0f	#3969AC	Eye_c14
+MU_7	Muscle	MU	7	str	MU_7_myoblasts (cycling)	Muscle myoblasts (cycling)	myogenic progenitors	190	5393	1883	1368	4248	9.369	0.34241573	PAX7+ and G2/M cell cycle states; somewhat higher markers TOP2A/CENPE+	#89C75F	#3969AC	Muscle_c7
+MU_17	Muscle	MU	17	str	MU_17_myoblasts	Muscle myoblasts	myogenic progenitors	191	1008	3007.5	1901.5	4162	6.2295	0.195414207	PAX7+	#89C75F	#3969AC	Muscle_c17
+MU_9	Muscle	MU	9	str	MU_9_tenogenic cells	Muscle tenogenic cells	myogenic progenitors	192	4392	2146	1510	5618	8.3485	0.307637247	TNMD/MKX+	#89C75F	#3969AC	Muscle_c9
+MU_4	Muscle	MU	4	str	MU_4_fibroblasts	Muscle fibroblasts	fibroblasts	193	6093	1575	1149	3530	9.157	0.338099428	FBN1+	#89C75F	#3969AC	Muscle_c4
+LI_9	Liver	LI	9	str	LI_9_stellate	Liver stellate	stellate	194	2239	1769	1368	7426	12.453	0.461588106	stellate cells (lipocytes that become myofibroblast-like when liver is injured); high COL3A1 DCN COL6A3	#3b46a3	#3969AC	Liver_c9
+HT_9	Heart	HT	9	str	HT_9_pericyte	Heart pericyte	pericytes	195	3684	2350	1526	4504	11.8595	0.512728744	PDGFRB RGS5 NOTCH3 marker	#D51F26	#3969AC	Heart_c9
+MU_14	Muscle	MU	14	str	MU_14_pericytes 1	Muscle pericytes	pericytes	196	1887	1961	1403	4554	8.558	0.314293675	RGS5/KCNJ8	#89C75F	#3969AC	Muscle_c14
+SK_6	Skin	SK	6	str	SK_6_pericyte	Skin pericyte	pericytes	197	3366	1694.5	1294	9537.5	9.051	0.287889208	TRPC6+, ACTA2+, PDGFRB+	#ad0773	#3969AC	Skin_c6
+ST_12	StomachEsophagus	ST	12	str	ST_12_pericytes	StomachEsophagus pericytes	pericytes	198	2550	2157.5	1496.5	5742	6.614	0.298226547	TRPC6+ PDGFRB+ RGS5+	#208A42	#3969AC	Stomach_c12
+HT_3	Heart	HT	3	str	HT_3_fibroblast 1	Heart fibroblast	fibroblasts	199	10121	2293	1507	4224	11.221	0.479264844	DCN COL1A2 COL1A1 marker	#D51F26	#3969AC	Heart_c3
+HT_10	Heart	HT	10	str	HT_10_fibroblast 3	Heart fibroblast	fibroblasts	200	2550	5004.5	2657	9394	10.762	0.460497454	DCN COL1A2 COL1A1 marker	#D51F26	#3969AC	Heart_c10
+TM_13	Thymus	TM	13	str	TM_13_fibroblasts 2	Thymus fibroblasts	fibroblasts	201	380	2547.5	1779	11344	9.3675	0.322282298	COL1A2/COl3A1/DCN+	#6E4B9E	#3969AC	Thymus_c13
+SK_1	Skin	SK	1	str	SK_1_fibroblast 2	Skin fibroblast	fibroblasts	202	6716	997	802	5082	9.0645	0.281414451	LRRTM4+, COL6A6+, ABCA10+	#ad0773	#3969AC	Skin_c1
+SK_5	Skin	SK	5	str	SK_5_fibroblast 4	Skin fibroblast	fibroblasts	203	4846	2110	1549	11837.5	8.7125	0.268483123	LRRTM4+, COL6A6+, ABCA10+	#ad0773	#3969AC	Skin_c5

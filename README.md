@@ -3,7 +3,7 @@
 
 ![](img/hdma_logo_small.png)
 
-This repository accompanies the preprint [**_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_**](https://www.biorxiv.org/content/10.1101/2025.04.30.651381v1) (Liu\*, Jessa\*, Kim\*, Ng\*, ..., Kundaje+, Farh+, Greenleaf+, bioRxiv, 2025).
+This repository accompanies the paper [**_Multiomics and deep learning dissect regulatory syntax in human development_**](https://www.nature.com/articles/s41586-026-10326-9) (Liu\*, Jessa\*, Kim\*, Ng\*, ..., Kundaje+, Farh+, Greenleaf+, Nature, 2026).
 
 \* _equal contribution_  
 \+ _co-corresponding_
@@ -21,8 +21,8 @@ This repository accompanies the preprint [**_Dissecting regulatory syntax in hum
 - [Demo](https://greenleaflab.github.io/HDMA/#demo)
   - [Inputs and outputs](https://greenleaflab.github.io/HDMA/#inputs-and-outputs)
   - [Vignettes](https://greenleaflab.github.io/HDMA/#vignettes)
+- [Agent skills for navigating the HDMA code and data](https://greenleaflab.github.io/HDMA/#agent-skills-for-navigating-the-hdma-code-and-data)
 - [Citation](https://greenleaflab.github.io/HDMA/#citation)
-
 
 ## Codebase
 
@@ -188,10 +188,31 @@ analysis outputs, and trained models:
 
 
 
+## Agent skills for navigating the HDMA code and data
+
+This repository contains an **`hdma` agent skill** (in [`.claude/skills/hdma`](.claude/skills/hdma))
+and an [`AGENTS.md`](AGENTS.md) so that an AI coding agent (Claude Code, Codex, Gemini-CLI, etc) can help you find and
+download the data and run or adapt the code. Both are routers that point to
+this repo's own documentation ([`DATA.md`](DATA.md), [`README.md`](README.md),
+[`code/03-chrombpnet/README.md`](code/03-chrombpnet/README.md)) and surface some
+non-obvious conventions.
+
+- **Using [Claude Code](https://claude.com/claude-code):** open it in the cloned
+  repo and the skill is discovered automatically. It triggers when you ask
+  things like *"download the ChromBPNet models for brain cell types"* or *"where is the code for running g-chromVAR?"*, or you can invoke it
+  explicitly with `/hdma`. Run `/help` to confirm it is available.
+- **Using other agents** (e.g. Codex CLI, Cursor, Gemini CLI): they read the
+  root `AGENTS.md` automatically, which routes to the same reference material.
+
+The skill covers two routes: **data** — finding and downloading analysis products from the
+[HDMA Zenodo community](https://zenodo.org/communities/hdma) (via
+[`tables/table_s14.tsv`](tables/table_s14.tsv)), data formats, browser tracks, and reprocessing
+raw SRA data; and **code** — repo layout, running/adapting pipeline steps, R and
+conda environments, path configuration, and finding the code behind each figure.
+
 
 ## Citation
 
 If you use this data or code, please cite:
 
-_Dissecting regulatory syntax in human development with scalable multiomics and deep learning_. Betty B. Liu, Selin Jessa, Samuel H. Kim, Yan Ting Ng, Soon il Higashino, Georgi K. Marinov, Derek C. Chen, Benjamin E. Parks, Li Li, Tri C. Nguyen, Sean K. Wang, Austin T. Wang, Serena Y. Tan, Michael Kosicki, Len A. Pennacchio, Eyal Ben-David, Anca M. Pasca, Anshul Kundaje, Kyle K.H. Farh, William J. Greenleaf, bioRxiv 2025.04.30.651381; doi: [https://doi.org/10.1101/2025.04.30.651381](https://doi.org/10.1101/2025.04.30.651381)
-
+> Liu, B.B., Jessa, S., Kim, S.H. et al. Multiomics and deep learning dissect regulatory syntax in human development. Nature 653, 1240–1253 (2026). https://doi.org/10.1038/s41586-026-10326-9

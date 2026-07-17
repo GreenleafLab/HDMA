@@ -1,0 +1,46 @@
+data_type	size	depo_name	record_id	url
+ArchR projects	42.25GB	HDMA ArchR Projects Part1	15022502	https://doi.org/10.5281/zenodo.15022502
+ArchR projects	42.72GB	HDMA ArchR Projects Part2	15022500	https://doi.org/10.5281/zenodo.15022500
+ArchR projects	35.76GB	HDMA ArchR Projects Part3	15022503	https://doi.org/10.5281/zenodo.15022503
+ArchR projects	45.64GB	HDMA ArchR Projects Part4	15022506	https://doi.org/10.5281/zenodo.15022506
+Bigwigs	49.1GB	HDMA bigwigs - Part 1	15066649	https://doi.org/10.5281/zenodo.15066649
+Bigwigs	48.0GB	HDMA bigwigs - Part 2	15066655	https://doi.org/10.5281/zenodo.15066655
+Bigwigs	48.2GB	HDMA bigwigs - Part 3	15066659	https://doi.org/10.5281/zenodo.15066659
+Bigwigs	49.9GB	HDMA bigwigs - Part 4	15066653	https://doi.org/10.5281/zenodo.15066653
+Bigwigs	49.7GB	HDMA bigwigs - Part 5	15066661	https://doi.org/10.5281/zenodo.15066661
+Bigwigs	48.2GB	HDMA bigwigs - Part 6	15066662	https://doi.org/10.5281/zenodo.15066662
+Bigwigs	49.9GB	HDMA bigwigs - Part 7	15066650	https://doi.org/10.5281/zenodo.15066650
+Bigwigs	49.3GB	HDMA bigwigs - Part 8	15066657	https://doi.org/10.5281/zenodo.15066657
+Cell metadata, caCREs, ChromBPNet training regions, instances, motif compendium	13.73GB	HDMA cell metadata, regulatory elements, motif lexicon, and ABC loops	15200417	https://doi.org/10.5281/zenodo.15200417
+ChromBPNet counts mean contribution scores (h5)	49.7GB	HDMA ChromBPNet contribution scores - Part 1	15048830	https://doi.org/10.5281/zenodo.15048830
+ChromBPNet counts mean contribution scores (h5)	50.0GB	HDMA ChromBPNet contribution scores - Part 2	15048823	https://doi.org/10.5281/zenodo.15048823
+ChromBPNet counts mean contribution scores (h5)	47.5GB	HDMA ChromBPNet contribution scores - Part 3	15066280	https://doi.org/10.5281/zenodo.15066280
+ChromBPNet counts mean contribution scores (h5)	48.3GB	HDMA ChromBPNet contribution scores - Part 4	15048825	https://doi.org/10.5281/zenodo.15048825
+ChromBPNet counts mean contribution scores (h5)	49.4GB	HDMA ChromBPNet contribution scores - Part 5	15048957	https://doi.org/10.5281/zenodo.15048957
+ChromBPNet counts mean contribution scores (h5)	47.7GB	HDMA ChromBPNet contribution scores - Part 6	15048976	https://doi.org/10.5281/zenodo.15048976
+ChromBPNet counts mean contribution scores (h5)	47.4GB	HDMA ChromBPNet contribution scores - Part 7	15049011	https://doi.org/10.5281/zenodo.15049011
+ChromBPNet counts mean contribution scores (h5)	46.9GB	HDMA ChromBPNet contribution scores - Part 8	15049017	https://doi.org/10.5281/zenodo.15049017
+ChromBPNet counts mean contribution scores (h5)	49.8GB	HDMA ChromBPNet contribution scores - Part 9	15049051	https://doi.org/10.5281/zenodo.15049051
+ChromBPNet counts mean contribution scores (h5)	36.7GB	HDMA ChromBPNet contribution scores - Part 10	15066443	https://doi.org/10.5281/zenodo.15066443
+ChromBPNet models, and shared bias model	44.5GB	HDMA ChromBPNet models - Part 1	15048277	https://doi.org/10.5281/zenodo.15048277
+ChromBPNet models	45.0GB	HDMA ChromBPNet models - Part 2	15200486	https://doi.org/10.5281/zenodo.15200486
+Fragments + count matrices	1.07GB	HDMA Fragments+Count Matrices Adrenal	15009250	https://doi.org/10.5281/zenodo.15009250
+Fragments + count matrices	22.77GB	HDMA Fragments+Count Matrices Brain	15009261	https://doi.org/10.5281/zenodo.15009261
+Fragments + count matrices	30.9GB	HDMA Fragments+Count Matrices Eye	15014512	https://doi.org/10.5281/zenodo.15014512
+Fragments + count matrices	35.78GB	HDMA Fragments+Count Matrices Heart	15014535	https://doi.org/10.5281/zenodo.15014535
+Fragments + count matrices	23.9GB	HDMA Fragments+Count Matrices Liver	15014654	https://doi.org/10.5281/zenodo.15014654
+Fragments + count matrices	41.8GB	HDMA Fragments+Count Matrices Lung Part1	15192513	https://doi.org/10.5281/zenodo.15192513
+Fragments + count matrices	29.3GB	HDMA Fragments+Count Matrices Lung Part2	15192515	https://doi.org/10.5281/zenodo.15192515
+Fragments + count matrices	33.14GB	HDMA Fragments+Count Matrices Muscle	15014659	https://doi.org/10.5281/zenodo.15014659
+Fragments + count matrices	30.52GB	HDMA Fragments+Count Matrices Skin	15014662	https://doi.org/10.5281/zenodo.15014662
+Fragments + count matrices	25.77GB	HDMA Fragments+Count Matrices Spleen	15014666	https://doi.org/10.5281/zenodo.15014666
+Fragments + count matrices	28.22GB	HDMA Fragments+Count Matrices StomachEsophagus	15014664	https://doi.org/10.5281/zenodo.15014664
+Fragments + count matrices	24.83GB	HDMA Fragments+Count Matrices Thymus	15014668	https://doi.org/10.5281/zenodo.15014668
+Fragments + count matrices	6.73GB	HDMA Fragments+Count Matrices Thyroid	15014712	https://doi.org/10.5281/zenodo.15014712
+BPCells objects	40.57GB	HDMA Global BPCells Files	15053815	https://doi.org/10.5281/zenodo.15053815
+Per-cluster TF-MoDISco motifs (h5)	22.07GB	HDMA TF-MoDISco motifs per cluster	15265409	https://doi.org/10.5281/zenodo.15265409
+Seurat objects	46.15GB	HDMA Seurat Objects Part1	15014812	https://doi.org/10.5281/zenodo.15014812
+Seurat objects	49.27GB	HDMA Seurat Objects Part2	15014814	https://doi.org/10.5281/zenodo.15014814
+Seurat objects	47.75GB	HDMA Seurat Objects Part3	15014976	https://doi.org/10.5281/zenodo.15014976
+Seurat objects	46.48GB	HDMA Seurat Objects Part4	15014808	https://doi.org/10.5281/zenodo.15014808
+Raw data metadata, library preparation protocol (supp note 1)	514kB	HDMA Raw Data Metadata	17259745	https://doi.org/10.5281/zenodo.17259745

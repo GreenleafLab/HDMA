@@ -11,6 +11,11 @@
 *.html
 *.Rproj
 
+# supplementary tables shipped with the repo so the download recipes work
+!tables/
+!tables/*.tsv
+!tables/*.md
+
 # custom
 code/ROOT_DIR.txt
 code/SJ_RENV_DIR.txt

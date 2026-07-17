@@ -169,7 +169,7 @@ else:
 
 ```bash
 # list the data types on Zenodo from Table S14
-cut -f 1 table_s14.tsv | sort | uniq
+cut -f 1 tables/table_s14.tsv | sort | uniq
 # ArchR projects
 # Bigwigs
 # BPCells objects
@@ -184,7 +184,7 @@ cut -f 1 table_s14.tsv | sort | uniq
 
 # record IDs are in column 4 of Table S14, so we pipe those
 # into our helper to get the URLs for the files from records containing ChromBPNet models
-grep models table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+grep models tables/table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 # Record URLs written to urls_record.txt
 # File URLs written to urls_file.txt
 
@@ -199,7 +199,7 @@ for i in *.gz; do tar -xvf $i; done
 #### Example: get the Seurat object for brain tissue
 
 ```bash
-grep Seurat table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+grep Seurat tables/table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 # Record URLs written to urls_record.txt
 # File URLs written to urls_file.txt
 
@@ -214,7 +214,7 @@ wget -i urls/brain_urls.txt
 
 ```bash
 # get the records containing Fragments + Count Matrices
-grep Fragments table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+grep Fragments tables/table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 # Record URLs written to urls_record.txt
 # File URLs written to urls_file.txt
 
@@ -229,16 +229,16 @@ wget -i urls_fragment.txt
 
 ```bash
 # get the records containing Bigwigs
-grep Bigwig table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
+grep Bigwig tables/table_s14.tsv | cut -f 4 | tr '\n' ' ' | python get_urls.py
 
 # preview the columns in Table S2
-head -n2 table_s2.tsv
+head -n2 tables/table_s2.tsv
 # Cluster	organ	organ_code	cluster_id	compartment	L1_annot	L2_annot	L3_annot	dend_order	ncell	median_numi	median_ngene	median_nfrags	median_tss	median_frip	note	organ_color	compartment_color	Cluster_ChromBPNet
 # LI_13	Liver	LI	13	epi	LI_13_cholangiocyte	Liver cholangiocyte	cholangiocyte	1	1004	1986	1462.5	7509.5	11.826	0.516103027	PKHD1 ANXA4 cholangiocyte (secretes bile)	#3b46a3	#11A579	Liver_c13
 
 # get all cell types where compartment == "imm", extract the Cluster_ChromBPNet column value,
 # and get the URLs matching those IDs
-awk -F'\t' '$5 == "imm" { print $19 }' table_s2.tsv | grep -f - urls_file.txt > urls_imm.txt
+awk -F'\t' '$5 == "imm" { print $19 }' tables/table_s2.tsv | grep -f - urls_file.txt > urls_imm.txt
 
 # download the bigwigs for immune cell types
 wget -i urls_imm.txt
